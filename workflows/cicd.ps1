@@ -29,7 +29,7 @@ $result3 = Get-GitTopLevelDirectory
 ##############################
 
 # Define the path to your module folder (adjust "MyModule" as needed)
-$moduleFolder = "$result3\source\BlackBytesBox.Manifested.Git"
+$moduleFolder = "$result3/source/BlackBytesBox.Manifested.Git"
 Update-ManifestModuleVersion -ManifestPath "$moduleFolder" -NewVersion "$($result.VersionBuild).$($result.VersionMajor).$($result.VersionMinor)"
 $moduleManifest = "$moduleFolder/BlackBytesBox.Manifested.Git.psd1" -replace '[/\\]', [System.IO.Path]::DirectorySeparatorChar
 
