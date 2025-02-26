@@ -17,9 +17,9 @@ if ([string]::IsNullOrEmpty($NUGET_GITHUB_PUSH) -or [string]::IsNullOrEmpty($NUG
     }
 }
 
-Install-Module -Name BlackBytesBox.Manifested.Initialize -Force -AllowClobber
-Install-Module -Name BlackBytesBox.Manifested.Version -Force -AllowClobber
-Install-Module -Name BlackBytesBox.Manifested.Git -Force -AllowClobber
+Install-Module -Name BlackBytesBox.Manifested.Initialize -Repository "PSGallery" -Force -AllowClobber
+Install-Module -Name BlackBytesBox.Manifested.Version -Repository "PSGallery" -Force -AllowClobber
+Install-Module -Name BlackBytesBox.Manifested.Git -Repository "PSGallery" -Force -AllowClobber
 
 
 $result1 = Convert-DateTimeTo64SecPowershellVersion -VersionBuild 0
@@ -37,24 +37,29 @@ $moduleManifest = "$moduleFolder/BlackBytesBox.Manifested.Git.psd1" -replace '[/
 Write-Host "===> Testing module manifest at: $moduleManifest" -ForegroundColor Cyan
 Test-ModuleManifest -Path $moduleManifest
 
-# Import the module for testing
-#Write-Host "===> Importing module from: $moduleFolder" -ForegroundColor Cyan
-#Import-Module $moduleFolder -Force
-
-# Replace 'MyFunction' with one of your module's exported command names to verify it loads
-#if (Get-Command -Module BlackBytesBox.Manifested.Git -Name "Get-GitTopLevelDirectory" -ErrorAction SilentlyContinue) {
-    #Write-Host "===> Module imported successfully and 'MyFunction' is available." -ForegroundColor Green
-#}
-#else {
-#    Write-Host "===> Warning: 'MyFunction' is not available. Verify your module's exports." -ForegroundColor Yellow
-#}
-
-# Publish the module to LocalGallery
-Write-Host "===> Publishing module to LocalGallery..." -ForegroundColor Cyan
-#Publish-Module -Path $moduleFolder -Repository LocalGallery
-Write-Host "===> Module published to LocalGallery." -ForegroundColor Green
-
 Publish-Module -Path $moduleFolder -Repository "PSGallery" -NuGetApiKey "$POWERSHELL_GALLERY"
+
+##############################
+# Git operations: commit changes, tag the repo with the new version, and push them
+
+# Define the new version tag based on the version information
+$tag = "$($result1.VersionBuild).$($result1.VersionMajor).$($result1.VersionMinor)"
+
+# Change directory to the repository's top-level directory
+Set-Location -Path $result3
+
+# Stage all changes (adjust if you want to be more specific)
+git add .
+
+# Commit changes with a message including the version tag and [skip ci] to avoid triggering GitHub Actions
+git commit -m "Update module version to $tag [skip ci]"
+
+# Create a Git tag for the new version
+git tag $tag
+
+# Push the commit and tag to the remote repository
+git push origin HEAD
+git push origin $tag
 
 exit 0
 
