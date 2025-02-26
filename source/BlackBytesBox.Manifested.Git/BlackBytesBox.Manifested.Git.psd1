@@ -51,7 +51,7 @@ Description = 'A helper module to receive information form git versions reposito
 # ProcessorArchitecture = ''
 
 # Modules that must be imported into the global environment prior to importing this module
-#RequiredModules = @(@{ModuleName = 'CoreePower.Lib'; ModuleVersion = '0.20251.11191'; })
+#RequiredModules = @(@{ModuleName = 'CoreePower.Lib'; ModuleVersion = '..'; })
 
 # Assemblies that must be loaded prior to importing this module
 # RequiredAssemblies = @()
