@@ -30,7 +30,7 @@ CompanyName = ''
 Copyright = 'Copyright (c) 2025 Carsten Riedel'
 
 # Description of the functionality provided by this module
-Description = 'A helper module to receive information form git versions repositorys.'
+Description = 'Module for retrieving essential Git repository info, including the repositories root directory and current branch.'
 
 # Minimum version of the PowerShell engine required by this module
 # PowerShellVersion = ''
