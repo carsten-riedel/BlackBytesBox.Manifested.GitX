@@ -17,8 +17,10 @@ if ([string]::IsNullOrEmpty($NUGET_GITHUB_PUSH) -or [string]::IsNullOrEmpty($NUG
     }
 }
 
+Install-Module -Name BlackBytesBox.Manifested.Initialize -Repository PSGallery -Force -AllowClobber
 Install-Module -Name BlackBytesBox.Manifested.Version -Repository PSGallery -Force -AllowClobber
 Install-Module -Name BlackBytesBox.Manifested.Git -Repository PSGallery -Force -AllowClobber
+
 
 $result1 = Convert-DateTimeTo64SecPowershellVersion -VersionBuild 0
 $result2 = Get-GitCurrentBranch
