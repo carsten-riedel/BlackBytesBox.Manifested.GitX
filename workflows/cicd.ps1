@@ -42,6 +42,15 @@ Publish-Module -Path $moduleFolder -Repository "PSGallery" -NuGetApiKey "$POWERS
 ##############################
 # Git operations: commit changes, tag the repo with the new version, and push them
 
+$gitUserLocal = git config user.name
+$gitMailLocal = git config user.email
+
+$gitTempUser = "Workflow"
+$gitTempMail = "carstenriedel@outlook.com"  # Assuming a placeholder email
+
+git config user.name $gitTempUser
+git config user.email $gitTempMail
+
 # Define the new version tag based on the version information
 $tag = "$($result1.VersionBuild).$($result1.VersionMajor).$($result1.VersionMinor)"
 
@@ -60,6 +69,9 @@ git tag $tag
 # Push the commit and tag to the remote repository
 git push origin HEAD
 git push origin $tag
+
+git config user.name $gitUserLocal
+git config user.email $gitMailLocal
 
 exit 0
 
