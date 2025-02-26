@@ -1,24 +1,21 @@
 param (
-    [string]$NugetGithubPush,
-    [string]$NugetPat,
-    [string]$NugetTestPat,
-    [string]$PowerShellGallery
+    [string]$NUGET_GITHUB_PUSH,
+    [string]$NUGET_PAT,
+    [string]$NUGET_TEST_PAT,
+    [string]$POWERSHELL_GALLERY
 )
 
-# Example: Get the first five characters of $s, handling an empty or short string gracefully
-if ([string]::IsNullOrEmpty($PowerShellGallery)) {
-    $result = ""
-} elseif ($PowerShellGallery.Length -ge 5) {
-    $result = $PowerShellGallery.Substring(0, 5)
-} else {
-    $result = $PowerShellGallery
+# If any of the parameters are empty, try loading them from a secrets file.
+if ([string]::IsNullOrEmpty($NUGET_GITHUB_PUSH) -or [string]::IsNullOrEmpty($NUGET_PAT) -or [string]::IsNullOrEmpty($NUGET_TEST_PAT) -or [string]::IsNullOrEmpty($POWERSHELL_GALLERY)) {
+    if (Test-Path "$PSScriptRoot\cicd_secrets.ps1") {
+        . "$PSScriptRoot\cicd_secrets.ps1"
+        Write-Host "Secrets loaded from file."
+    }
+    if ([string]::IsNullOrEmpty($NUGET_GITHUB_PUSH))
+    {
+        exit 1
+    }
 }
-
-# Output the result
-$result
-
-exit 0
-. "$PSScriptRoot/cicd_secrets.ps1"
 
 Install-Module -Name BlackBytesBox.Manifested.Version -Repository PSGallery -Force -AllowClobber
 Install-Module -Name BlackBytesBox.Manifested.Git -Repository PSGallery -Force -AllowClobber
