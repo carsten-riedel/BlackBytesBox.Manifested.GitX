@@ -1,5 +1,23 @@
+param (
+    [string]$NugetGithubPush,
+    [string]$NugetPat,
+    [string]$NugetTestPat,
+    [string]$PowerShellGallery
+)
 
+# Example: Get the first five characters of $s, handling an empty or short string gracefully
+if ([string]::IsNullOrEmpty($PowerShellGallery)) {
+    $result = ""
+} elseif ($PowerShellGallery.Length -ge 5) {
+    $result = $PowerShellGallery.Substring(0, 5)
+} else {
+    $result = $PowerShellGallery
+}
 
+# Output the result
+$result
+
+exit 0
 . "$PSScriptRoot/cicd_secrets.ps1"
 
 Install-Module -Name BlackBytesBox.Manifested.Version -Repository PSGallery -Force -AllowClobber
