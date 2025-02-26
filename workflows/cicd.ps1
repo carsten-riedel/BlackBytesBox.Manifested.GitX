@@ -17,9 +17,9 @@ if ([string]::IsNullOrEmpty($NUGET_GITHUB_PUSH) -or [string]::IsNullOrEmpty($NUG
     }
 }
 
-Install-Module -Name BlackBytesBox.Manifested.Initialize -Repository PSGallery -Force -AllowClobber
-Install-Module -Name BlackBytesBox.Manifested.Version -Repository PSGallery -Force -AllowClobber
-Install-Module -Name BlackBytesBox.Manifested.Git -Repository PSGallery -Force -AllowClobber
+Install-Module -Name BlackBytesBox.Manifested.Initialize -Force -AllowClobber
+Install-Module -Name BlackBytesBox.Manifested.Version -Force -AllowClobber
+Install-Module -Name BlackBytesBox.Manifested.Git -Force -AllowClobber
 
 
 $result1 = Convert-DateTimeTo64SecPowershellVersion -VersionBuild 0
@@ -51,7 +51,7 @@ Test-ModuleManifest -Path $moduleManifest
 
 # Publish the module to LocalGallery
 Write-Host "===> Publishing module to LocalGallery..." -ForegroundColor Cyan
-Publish-Module -Path $moduleFolder -Repository LocalGallery
+#Publish-Module -Path $moduleFolder -Repository LocalGallery
 Write-Host "===> Module published to LocalGallery." -ForegroundColor Green
 
 Publish-Module -Path $moduleFolder -Repository "PSGallery" -NuGetApiKey "$POWERSHELL_GALLERY"
