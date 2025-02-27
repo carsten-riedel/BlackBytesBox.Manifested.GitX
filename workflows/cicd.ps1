@@ -26,6 +26,7 @@ $result1 = Convert-DateTimeTo64SecPowershellVersion -VersionBuild 0
 $result2 = Get-GitCurrentBranch
 $result3 = Get-GitTopLevelDirectory
 
+
 ##############################
 
 # Define the path to your module folder (adjust "MyModule" as needed)
