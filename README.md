@@ -13,5 +13,3 @@ This PowerShell module provides two primary functions:
 - Git must be installed and accessible in your system's PATH.
 - A PowerShell version that supports module manifest features.
 
-
-
