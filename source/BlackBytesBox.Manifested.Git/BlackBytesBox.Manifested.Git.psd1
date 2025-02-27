@@ -69,7 +69,8 @@ Description = 'Module for retrieving essential Git repository info, including th
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = @('Get-GitTopLevelDirectory','Get-GitCurrentBranch','Get-GitRepositoryName','Copy-GitRepoSnapshot')
+FunctionsToExport = @('Get-GitTopLevelDirectory','Get-GitCurrentBranch','Get-GitRepositoryName','Copy-GitRepoSnapshot',
+                        'Get-RemoteRepoFileInfo','Compare-LocalRemoteFileTimestamps','Get-RemoteRepoFiles')
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = @()
@@ -78,7 +79,7 @@ CmdletsToExport = @()
 # VariablesToExport = @()
 
 # Aliases to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no aliases to export.
-AliasesToExport = @('ggtd','ggcb','ggrn','cgrs')
+AliasesToExport = @('ggtd','ggcb','ggrn','cgrs','grrfi','grrf','clrft')
 
 # DSC resources to export from this module
 # DscResourcesToExport = @()

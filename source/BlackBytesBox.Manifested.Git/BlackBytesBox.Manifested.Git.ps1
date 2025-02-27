@@ -364,7 +364,6 @@ function Mirror-DirectorySnapshot {
     Write-Host "Target directory synchronized successfully."
 }
 
-
 function Copy-GitRepoSnapshot {
     <#
     .SYNOPSIS
@@ -547,6 +546,7 @@ function Get-RemoteRepoFileInfo {
         # $result.Files is a hashtable with file commit info.
     #>
     [CmdletBinding()]
+    [alias("grrfi")]
     param(
         [Parameter(Mandatory = $true)]
         [string]$RemoteRepo,
@@ -651,6 +651,7 @@ function Get-RemoteRepoFiles {
         Get-RemoteRepoFiles -RemoteRepo $nfo.RemoteRepo -BranchName $nfo.BranchName -Files $nfo.Files
     #>
     [CmdletBinding()]
+    [alias("grrf")]
     param(
         [Parameter(Mandatory = $true)]
         [string]$RemoteRepo,
@@ -707,7 +708,7 @@ function Get-RemoteRepoFiles {
     }
 }
 
-function Filter-RemoteFileInfoForCheckout {
+function Compare-LocalRemoteFileTimestamps {
     <#
     .SYNOPSIS
         Separates remote file info into files to check out versus blacklisted files based on local file UTC last write times.
@@ -733,11 +734,12 @@ function Filter-RemoteFileInfoForCheckout {
 
     .EXAMPLE
         $nfo = Get-RemoteRepoFileInfo -BranchName "main" -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX.git"
-        $result = Filter-RemoteFileInfoForCheckout -Files $nfo.Files -CompareDestination "C:\temp\test\BlackBytesBox.Manifested.GitX"
+        $result = Compare-LocalRemoteFileTimestamps-Files $nfo.Files -CompareDestination "C:\temp\test\BlackBytesBox.Manifested.GitX"
         # $result.RemoteNewer contains remote files that should be checked out,
         # $result.RemoteOlder contains files that are up-to-date locally.
     #>
     [CmdletBinding()]
+    [alias("clrft")]
     param(
         [Parameter(Mandatory=$true)]
         [hashtable]$Files,
@@ -808,10 +810,3 @@ function Filter-RemoteFileInfoForCheckout {
 }
 
 
-
-$nfo = Get-RemoteRepoFileInfo -BranchName "main" -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX.git"
-$nfo.Files = Filter-RemoteFileInfoForCheckout -Files $nfo.Files -CompareDestination "C:\temp\test\BlackBytesBox.Manifested.GitX"
-$files = Get-RemoteRepoFiles -BranchName "$($nfo.BranchName)" -RemoteRepo "$($nfo.RemoteRepo)" -Files $nfo.Files.RemoteNewer
-
-Write-Output $files.LocalPath
-$x = 1
