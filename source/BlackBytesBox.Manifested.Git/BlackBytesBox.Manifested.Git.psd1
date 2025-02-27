@@ -51,7 +51,7 @@ Description = 'Module for retrieving essential Git repository info, including th
 # ProcessorArchitecture = ''
 
 # Modules that must be imported into the global environment prior to importing this module
-#RequiredModules = @(@{ModuleName = 'CoreePower.Lib'; ModuleVersion = '0.20251.12498'; })
+#RequiredModules = @(@{ModuleName = 'CoreePower.Lib'; ModuleVersion = '0.20251.11742'; })
 
 # Assemblies that must be loaded prior to importing this module
 # RequiredAssemblies = @()
