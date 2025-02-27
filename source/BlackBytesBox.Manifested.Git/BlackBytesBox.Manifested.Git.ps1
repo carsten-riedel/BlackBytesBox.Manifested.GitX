@@ -99,6 +99,68 @@ function Get-GitCurrentBranch {
     }
 }
 
+function Get-GitCurrentBranchRoot {
+    <#
+    .SYNOPSIS
+    Retrieves the root portion of the current Git branch name.
+
+    .DESCRIPTION
+    This function retrieves the current Git branch name by invoking Git commands directly.
+    It first attempts to get the branch name using 'git rev-parse --abbrev-ref HEAD'. If the result is
+    "HEAD" (indicating a detached HEAD state), it then looks for a branch that contains the current commit
+    via 'git branch --contains HEAD'. If no branch is found, it falls back to using the commit hash.
+    The function then splits the branch name on both forward (/) and backslashes (\) and returns the first
+    segment as the branch root.
+
+    .EXAMPLE
+    PS C:\> Get-GitCurrentBranchRoot
+
+    Returns:
+    feature
+
+    .NOTES
+    - Ensure Git is available in your system's PATH.
+    - For detached HEAD states with multiple containing branches, the first branch found is used.
+    #>
+    [CmdletBinding()]
+    [alias("ggcbr")]
+    param()
+
+    try {
+        # Attempt to get the abbreviated branch name.
+        $branch = git rev-parse --abbrev-ref HEAD 2>$null
+
+        # Check for detached HEAD state.
+        if ($branch -eq 'HEAD') {
+            # Retrieve branches containing the current commit.
+            $branches = git branch --contains HEAD 2>$null | ForEach-Object {
+                $_.Replace('*','').Trim()
+            } | Where-Object { $_ -ne '' }
+
+            if ($branches.Count -gt 0) {
+                $branch = $branches[0]
+            }
+            else {
+                # Fallback to commit hash if no branch is found.
+                $branch = git rev-parse HEAD 2>$null
+            }
+        }
+        
+        $branch = $branch.Trim()
+        if ([string]::IsNullOrWhiteSpace($branch)) {
+            Write-Error "Unable to determine the current Git branch."
+            return
+        }
+        
+        # Split the branch name on both '/' and '\' and return the first segment.
+        $root = $branch -split '[\\/]' | Select-Object -First 1
+        return $root
+    }
+    catch {
+        Write-Error "Error retrieving Git branch root: $_"
+    }
+}
+
 function Get-GitRepositoryName {
     <#
     .SYNOPSIS
@@ -193,7 +255,6 @@ function Get-RemoteCommitId {
     # Output the commit ID
     Write-Output $commitId
 }
-
 
 function Get-SafeDirectoryNameFromUrl {
     <#
