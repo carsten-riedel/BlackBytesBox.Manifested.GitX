@@ -98,13 +98,13 @@ PrivateData = @{
         Tags = 'BLACKBYTESBOX', 'MANIFESTED', 'Git' , 'Powershell'
 
         # A URL to the license for this module.
-        LicenseUri = 'https://raw.githubusercontent.com/carsten-riedel/BlackBytesBox.Manifested.Git/refs/heads/main/LICENSE.txt'
+        LicenseUri = 'https://raw.githubusercontent.com/carsten-riedel/BlackBytesBox.Manifested.GitX/refs/heads/main/LICENSE.txt'
 
         # A URL to the main website for this project.
         # ProjectUri = ''
                    
         # A URL to an icon representing this module.
-        IconUri = 'https://raw.githubusercontent.com/carsten-riedel/BlackBytesBox.Manifested.Git/refs/heads/main/resources/BlackBytesBoxed_128.png'
+        IconUri = 'https://raw.githubusercontent.com/carsten-riedel/BlackBytesBox.Manifested.GitX/refs/heads/main/resources/BlackBytesBoxed_128.png'
 
         # ReleaseNotes of this module
         # ReleaseNotes = ''
