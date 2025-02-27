@@ -519,5 +519,299 @@ function Copy-GitRepoSnapshot {
     }
 }
 
+function Get-RemoteRepoFileInfo {
+    <#
+    .SYNOPSIS
+        Retrieves file commit information from a remote Git repository without downloading full file contents.
 
-#Copy-GitRepoSnapshot -BranchName "main" -RepositoryUrl "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX.git" -Destination "C:\temp\test"
+    .DESCRIPTION
+        This function accepts a remote Git repository URL and a branch name as parameters.
+        It creates a temporary clone that only downloads metadata (using --filter=blob:none and --no-checkout)
+        to prevent downloading the file blobs. It then lists all files from the HEAD commit and, for each file,
+        extracts the latest commit's timestamp (converted to a DateTime object) and commit message.
+        The function returns a PSCustomObject containing:
+          - RemoteRepo: The provided remote repository URL.
+          - BranchName: The branch name queried.
+          - Files: A hashtable indexed by filename with file commit info.
+
+    .PARAMETER RemoteRepo
+        The URL of the remote Git repository.
+
+    .PARAMETER BranchName
+        The branch name to query.
+
+    .EXAMPLE
+        $result = Get-RemoteRepoFileInfo -RemoteRepo "https://github.com/user/repo.git" -BranchName "main"
+        # $result.RemoteRepo contains the repo URL,
+        # $result.BranchName contains "main",
+        # $result.Files is a hashtable with file commit info.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RemoteRepo,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$BranchName
+    )
+
+    # Create a temporary directory for the partial clone.
+    $tempDir = New-Item -ItemType Directory -Path ([System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.Guid]::NewGuid().ToString()))
+
+    try {
+        # Clone the remote repo using partial clone options to fetch only metadata.
+        git clone --filter=blob:none --no-checkout -b $BranchName $RemoteRepo $tempDir.FullName | Out-Null
+        
+        # Change into the temporary repository directory.
+        Push-Location $tempDir.FullName
+        
+        # Get the list of files from the HEAD commit (metadata only, no file contents are present).
+        $files = git ls-tree -r HEAD --name-only | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+        
+        # Prepare the result hashtable.
+        $fileInfoHash = @{}
+
+        foreach ($file in $files) {
+            # Retrieve the latest commit info for the file using ISO strict date format.
+            $commitInfo = git log -1 --pretty=format:"%ad|%s" --date=iso-strict -- $file
+            
+            if ($commitInfo) {
+                $parts = $commitInfo -split "\|", 2
+                # Convert the timestamp string to a DateTime object.
+                $timestamp = [datetime]::Parse($parts[0])
+                $comment = if ($parts.Count -gt 1) { $parts[1] } else { "" }
+            }
+            else {
+                $timestamp = $null
+                $comment = ""
+            }
+            
+            # Add the file's commit information to the result hashtable.
+            $fileInfoHash[$file] = [PSCustomObject]@{
+                Filename  = $file
+                Timestamp = $timestamp
+                Comment   = $comment
+            }
+        }
+        
+        # Create the final output object.
+        $output = [PSCustomObject]@{
+            RemoteRepo = $RemoteRepo
+            BranchName = $BranchName
+            Files      = $fileInfoHash
+        }
+        
+        return $output
+    }
+    catch {
+        Write-Error "An error occurred: $_"
+    }
+    finally {
+        # Restore the original location.
+        Pop-Location
+        
+        # Clean up the temporary directory.
+        if (Test-Path $tempDir.FullName) {
+            Remove-Item $tempDir.FullName -Recurse -Force
+        }
+    }
+}
+
+function Get-RemoteRepoFiles {
+    <#
+    .SYNOPSIS
+        Checks out selected files from a remote Git repository using sparse checkout,
+        then detaches versioning by removing the .git folder.
+
+    .DESCRIPTION
+        This function accepts a remote repository URL, branch name, and a hashtable (or collection)
+        of file information (e.g. as returned from Get-RemoteRepoFileInfo). It creates a temporary clone 
+        using partial clone options (--filter=blob:none and --no-checkout) so that only repository metadata
+        is downloaded. It then initializes sparse checkout (in non-cone mode) and sets the sparse-checkout 
+        paths to the list of files (extracted from the keys of the provided hashtable). The branch is checked out,
+        fetching only the specified files. After checkout, the .git directory is removed to detach versioning.
+        
+        The function returns a PSCustomObject containing:
+          - RemoteRepo: The remote repository URL.
+          - BranchName: The branch checked out.
+          - LocalPath: The path to the temporary directory containing the checked-out files (with versioning detached).
+          - Files: The list of files checked out.
+          
+    .PARAMETER RemoteRepo
+        The URL of the remote Git repository.
+
+    .PARAMETER BranchName
+        The branch name to check out.
+
+    .PARAMETER Files
+        A hashtable or object with keys representing the file paths to be checked out.
+
+    .EXAMPLE
+        $nfo = Get-RemoteRepoFileInfo -RemoteRepo "https://github.com/user/repo.git" -BranchName "main"
+        Get-RemoteRepoFiles -RemoteRepo $nfo.RemoteRepo -BranchName $nfo.BranchName -Files $nfo.Files
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RemoteRepo,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$BranchName,
+        
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Files
+    )
+
+    # Create a temporary directory for the sparse clone.
+    $tempDir = New-Item -ItemType Directory -Path ([System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.Guid]::NewGuid().ToString()))
+
+    try {
+        # Clone the remote repo using partial clone options to fetch only metadata.
+        git clone --filter=blob:none --no-checkout -b $BranchName $RemoteRepo $tempDir.FullName | Out-Null
+
+        # Change into the repository directory.
+        Push-Location $tempDir.FullName
+
+        # Initialize sparse checkout in non-cone mode.
+        git sparse-checkout init --no-cone | Out-Null
+        
+        # Extract the file list from the keys of the Files hashtable.
+        $fileList = $Files.Keys
+
+        # Set sparse-checkout paths to only include the specified files.
+        git sparse-checkout set $fileList | Out-Null
+
+        # Checkout the branch to retrieve the sparse content.
+        git checkout $BranchName | Out-Null
+
+        # Detach versioning by removing the .git directory.
+        $gitDir = Join-Path $tempDir.FullName ".git"
+        if (Test-Path $gitDir) {
+            Remove-Item -Recurse -Force $gitDir
+        }
+
+        # Create the output object.
+        $output = [PSCustomObject]@{
+            RemoteRepo = $RemoteRepo
+            BranchName = $BranchName
+            LocalPath  = $tempDir.FullName
+            Files      = $fileList
+        }
+        return $output
+    }
+    catch {
+        Write-Error "An error occurred: $_"
+    }
+    finally {
+        Pop-Location
+    }
+}
+
+function Filter-RemoteFileInfoForCheckout {
+    <#
+    .SYNOPSIS
+        Separates remote file info into files to check out versus blacklisted files based on local file UTC last write times.
+
+    .DESCRIPTION
+        This function accepts a hashtable of remote file information (with each key representing a file path relative
+        to the repository root and each value containing at least a Timestamp property as a UTC DateTime) and a
+        destination directory to compare against. It compares each remote file’s Timestamp with the corresponding
+        local file’s LastWriteTimeUtc:
+          - If the local file does not exist or is older than the remote version, the remote file info is placed into
+            the RemoteNewer group.
+          - Otherwise (i.e. the local file is up-to-date or newer), the file is added to the RemoteOlder group.
+        The function returns a PSCustomObject with two properties:
+          - RemoteNewer: A hashtable of files that should be checked out.
+          - RemoteOlder: A hashtable of files that should be skipped in later checkout operations.
+
+    .PARAMETER Files
+        A hashtable where each key is a file path (relative to the repository root) and each value is an object
+        containing file commit information, including a Timestamp property (as a UTC DateTime).
+
+    .PARAMETER CompareDestination
+        The path to the destination directory against which the file timestamps are compared.
+
+    .EXAMPLE
+        $nfo = Get-RemoteRepoFileInfo -BranchName "main" -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX.git"
+        $result = Filter-RemoteFileInfoForCheckout -Files $nfo.Files -CompareDestination "C:\temp\test\BlackBytesBox.Manifested.GitX"
+        # $result.RemoteNewer contains remote files that should be checked out,
+        # $result.RemoteOlder contains files that are up-to-date locally.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)]
+        [hashtable]$Files,
+        [Parameter(Mandatory=$true)]
+        [string]$CompareDestination
+    )
+
+    # Initialize output hashtables.
+    $RemoteNewer = @{}
+    $RemoteOlder = @{}
+
+    # If the destination directory doesn't exist, create it and assume no local files exist.
+    if (-not (Test-Path -Path $CompareDestination)) {
+        New-Item -ItemType Directory -Path $CompareDestination -Force | Out-Null
+        # Return all files for checkout.
+        return [PSCustomObject]@{
+            RemoteNewer = $Files
+            RemoteOlder = @{}
+        }
+    }
+
+    # Get all local files recursively under the destination directory.
+    $localFiles = Get-ChildItem -Path $CompareDestination -Recurse -File -ErrorAction SilentlyContinue
+
+    # Build a dictionary of local files keyed by their relative path (normalized).
+    $localFilesDict = @{}
+    foreach ($localFile in $localFiles) {
+        # Compute relative path by removing the destination directory prefix.
+        $relativePath = $localFile.FullName.Substring($CompareDestination.Length).TrimStart('\','/')
+        $localFilesDict[$relativePath] = $localFile
+    }
+
+    # If no local files are found, consider all remote files as RemoteNewer.
+    if ($localFilesDict.Count -eq 0) {
+        return [PSCustomObject]@{
+            RemoteNewer = $Files
+            RemoteOlder = @{}
+        }
+    }
+
+    # Compare each remote file with its local counterpart.
+    foreach ($remotePath in $Files.Keys) {
+        # Normalize remote file path to use OS-specific directory separators.
+        $normalizedRemotePath = $remotePath -replace '/', [IO.Path]::DirectorySeparatorChar
+        if (-not $localFilesDict.ContainsKey($normalizedRemotePath)) {
+            # No local file exists; include in RemoteNewer.
+            $RemoteNewer[$remotePath] = $Files[$remotePath]
+        }
+        else {
+            $localFile = $localFilesDict[$normalizedRemotePath]
+            $localTime = $localFile.LastWriteTimeUtc
+            $remoteTime = $Files[$remotePath].Timestamp
+            if ($localTime -lt $remoteTime) {
+                # Local file is older; include for checkout.
+                $RemoteNewer[$remotePath] = $Files[$remotePath]
+            }
+            else {
+                # Local file is up-to-date or newer; add to RemoteOlder.
+                $RemoteOlder[$remotePath] = $Files[$remotePath]
+            }
+        }
+    }
+
+    return [PSCustomObject]@{
+        RemoteNewer = $RemoteNewer
+        RemoteOlder = $RemoteOlder
+    }
+}
+
+
+
+$nfo = Get-RemoteRepoFileInfo -BranchName "main" -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX.git"
+$nfo.Files = Filter-RemoteFileInfoForCheckout -Files $nfo.Files -CompareDestination "C:\temp\test\BlackBytesBox.Manifested.GitX"
+$files = Get-RemoteRepoFiles -BranchName "$($nfo.BranchName)" -RemoteRepo "$($nfo.RemoteRepo)" -Files $nfo.Files.RemoteNewer
+
+Write-Output $files.LocalPath
+$x = 1
