@@ -158,3 +158,366 @@ function Get-GitRepositoryName {
     }
 }
 
+function Get-RemoteCommitId {
+    <#
+    .SYNOPSIS
+    Retrieves the commit ID of a remote branch from a Git repository.
+
+    .DESCRIPTION
+    This function queries the remote Git repository using 'git ls-remote' to obtain the current commit ID
+    of the specified branch directly from the remote, bypassing any potentially outdated local references.
+
+    .PARAMETER BranchName
+    Specifies the name of the remote branch to query (e.g., 'main', 'develop').
+
+    .EXAMPLE
+    PS C:\> Get-RemoteCommitId -BranchName "main"
+    
+    Retrieves and outputs the commit ID of the 'main' branch from the remote repository.
+
+    .NOTES
+    Ensure that Git is installed and available in the system's PATH.
+    #>
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$BranchName
+    )
+
+    # Query the remote repository for the branch reference.
+    # The output is in the form: <commitId><tab>refs/heads/<BranchName>
+    $remoteOutput = git ls-remote origin "refs/heads/$BranchName"
+
+    # Split the output by tab and take the first element (the commit ID)
+    $commitId = $remoteOutput -split "`t" | Select-Object -First 1
+
+    # Output the commit ID
+    Write-Output $commitId
+}
+
+
+function Get-SafeDirectoryNameFromUrl {
+    <#
+    .SYNOPSIS
+    Extracts and sanitizes the repository name from a Git repository URL.
+
+    .DESCRIPTION
+    This function takes a repository URL, extracts the base name (ignoring any trailing ".git"), 
+    and replaces any invalid directory name characters with an underscore.
+
+    .PARAMETER RepositoryUrl
+    The URL of the repository.
+
+    .EXAMPLE
+    Get-SafeDirectoryNameFromUrl -RepositoryUrl "https://github.com/example/repo.git"
+    Returns: "repo"
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$RepositoryUrl
+    )
+
+    # Remove trailing "/" and ".git" (if present).
+    $trimmedUrl = $RepositoryUrl.TrimEnd("/").Replace(".git", "")
+    $baseName = [System.IO.Path]::GetFileName($trimmedUrl)
+
+    # Define the set of invalid file name characters.
+    $invalidChars = [System.IO.Path]::GetInvalidFileNameChars()
+    foreach ($char in $invalidChars) {
+        $baseName = $baseName -replace [regex]::Escape($char), "_"
+    }
+    return $baseName
+}
+
+function Mirror-DirectorySnapshot {
+    <#
+    .SYNOPSIS
+    Mirrors the content of a source directory to a destination directory using native PowerShell commands.
+
+    .DESCRIPTION
+    This function synchronizes the destination directory with the source directory.
+    It will:
+      - Remove any files or directories in the destination that do not exist in the source.
+      - Copy new or updated files and directories from the source to the destination.
+    This effectively mirrors the source directory into the destination without using Robocopy.
+    The function includes simple retry logic for file copy operations in case target files are in use.
+
+    .PARAMETER Source
+    The source directory path.
+
+    .PARAMETER Destination
+    The destination directory path.
+
+    .PARAMETER RetryCount
+    The number of times to retry a failed file copy operation. Defaults to 3.
+
+    .PARAMETER RetryDelay
+    The delay in milliseconds between retry attempts. Defaults to 2000 (2 seconds).
+
+    .EXAMPLE
+    Mirror-DirectorySnapshot -Source "C:\Temp\Snapshot" -Destination "C:\MyProject\repo" -RetryCount 5 -RetryDelay 3000
+    Mirrors the snapshot directory to the specified destination with up to 5 retries and a 3000-millisecond delay between retries.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Source,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Destination,
+
+        [Parameter(Mandatory = $false)]
+        [int]$RetryCount = 10,
+
+        [Parameter(Mandatory = $false)]
+        [int]$RetryDelay = 6000
+    )
+
+    Write-Host "Synchronizing target directory '$Destination' with the snapshot..."
+
+    # Ensure destination exists.
+    if (-not (Test-Path -Path $Destination)) {
+        try {
+            New-Item -Path $Destination -ItemType Directory -Force | Out-Null
+        }
+        catch {
+            Write-Error "Failed to create destination folder '$Destination': $_"
+            return
+        }
+    }
+
+    # Get relative paths for items in source and destination.
+    $sourceItems = Get-ChildItem -Path $Source -Recurse -Force | ForEach-Object {
+        $_.FullName.Substring($Source.Length).TrimStart('\')
+    }
+    $destinationItems = Get-ChildItem -Path $Destination -Recurse -Force | ForEach-Object {
+        $_.FullName.Substring($Destination.Length).TrimStart('\')
+    }
+
+    # Remove items from destination that do not exist in source.
+    foreach ($destRelative in $destinationItems) {
+        if ($sourceItems -notcontains $destRelative) {
+            $destFullPath = Join-Path -Path $Destination -ChildPath $destRelative
+            try {
+                Remove-Item -Path $destFullPath -Recurse -Force -ErrorAction Stop
+                Write-Host "Removed extra item: $destFullPath"
+            }
+            catch {
+                Write-Warning "Failed to remove extra item '$destFullPath': $_"
+            }
+        }
+    }
+
+    # Copy or update files and directories from source to destination.
+    $sourceEntries = Get-ChildItem -Path $Source -Recurse -Force
+    foreach ($item in $sourceEntries) {
+        $relativePath = $item.FullName.Substring($Source.Length).TrimStart('\')
+        $destinationPath = Join-Path -Path $Destination -ChildPath $relativePath
+
+        if ($item.PSIsContainer) {
+            if (-not (Test-Path -Path $destinationPath)) {
+                try {
+                    New-Item -Path $destinationPath -ItemType Directory -Force | Out-Null
+                    Write-Host "Created directory: $destinationPath"
+                }
+                catch {
+                    Write-Warning "Failed to create directory '$destinationPath': $_"
+                }
+            }
+        }
+        else {
+            $copyFile = $false
+            if (-not (Test-Path -Path $destinationPath)) {
+                $copyFile = $true
+            }
+            else {
+                # Compare file sizes and LastWriteTime to decide if copy is needed.
+                $destFile = Get-Item -Path $destinationPath
+                if (($destFile.Length -ne $item.Length) -or ($destFile.LastWriteTime -lt $item.LastWriteTime)) {
+                    $copyFile = $true
+                }
+            }
+            if ($copyFile) {
+                $attempt = 0
+                $copied = $false
+                while (-not $copied -and $attempt -lt $RetryCount) {
+                    $attempt++
+                    try {
+                        Copy-Item -Path $item.FullName -Destination $destinationPath -Force -ErrorAction Stop
+                        Write-Host "Copied/Updated file: $destinationPath"
+                        $copied = $true
+                    }
+                    catch {
+                        Write-Warning "Attempt $(attempt): Failed to copy file '$($item.FullName)' to '$destinationPath': $_"
+                        if ($attempt -lt $RetryCount) {
+                            Write-Host "Retrying in $RetryDelay milliseconds..."
+                            Start-Sleep -Milliseconds $RetryDelay
+                        }
+                        else {
+                            Write-Warning "Exceeded maximum retry attempts for file: $destinationPath"
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Write-Host "Target directory synchronized successfully."
+}
+
+
+function Copy-GitRepoSnapshot {
+    <#
+    .SYNOPSIS
+    Updates a target directory to mirror the latest snapshot of a remote Git repository branch.
+
+    .DESCRIPTION
+    This function updates an existing target directory (which may not be empty) to match the state of a specified remote Git repository branch.
+    It performs the following steps:
+      1. Validates that the remote repository is accessible and that the specified branch exists.
+      2. Clones a shallow snapshot (depth 1) of the branch into a temporary folder.
+      3. Removes the .git folder from the temporary snapshot to eliminate Git versioning.
+      4. Derives a safe repository name from the RepositoryUrl and appends it to the target directory.
+      5. Calls Mirror-DirectorySnapshot to mirror the temporary snapshot to the repository-named subdirectory.
+      6. Cleans up the temporary snapshot folder.
+
+    .PARAMETER BranchName
+    The name of the branch to fetch the snapshot from. This parameter is mandatory.
+
+    .PARAMETER RepositoryUrl
+    The URL of the remote Git repository. Defaults to "https://github.com/example/repo.git" if not provided.
+
+    .PARAMETER Destination
+    The target directory to be updated with the snapshot. If not provided or null, a temporary folder is used.
+
+    .EXAMPLE
+    Copy-GitRepoSnapshot -BranchName "main" -Destination "C:\MyProject"
+    Updates the "C:\MyProject" directory (with the repository name appended) to mirror the latest snapshot of the "main" branch from the remote repository.
+    #>
+    [CmdletBinding()]
+    [alias("cgrs")]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$BranchName,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$RepositoryUrl = "https://github.com/example/repo.git",
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Destination
+    )
+
+    # If Destination is not provided or is empty, create a temporary folder for the target.
+    if ([string]::IsNullOrWhiteSpace($Destination)) {
+        $tempPath = [System.IO.Path]::GetTempPath()
+        $Destination = Join-Path -Path $tempPath -ChildPath ("RepoSnapshot_" + [System.Guid]::NewGuid().ToString())
+        Write-Host "No destination provided. Using temporary folder as target: $Destination"
+    }
+
+    # Ensure the target directory exists.
+    if (-not (Test-Path -Path $Destination)) {
+        try {
+            New-Item -Path $Destination -ItemType Directory -Force | Out-Null
+        }
+        catch {
+            Write-Error "Failed to create destination folder '$Destination': $_"
+            return
+        }
+    }
+
+    # Validate that the remote repository exists.
+    Write-Host "Checking if repository exists at $RepositoryUrl..."
+    try {
+        $remoteRefs = git ls-remote $RepositoryUrl 2>&1
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($remoteRefs)) {
+            Write-Error "Remote repository does not exist or is inaccessible."
+            return
+        }
+    }
+    catch {
+        Write-Error "Error while checking repository: $_"
+        return
+    }
+
+    # Validate that the specified branch exists in the remote repository.
+    Write-Host "Checking if branch '$BranchName' exists in the repository..."
+    try {
+        $branchRef = git ls-remote --heads $RepositoryUrl $BranchName 2>&1
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($branchRef)) {
+            Write-Error "Branch '$BranchName' does not exist in the repository."
+            return
+        }
+    }
+    catch {
+        Write-Error "Error while checking branch: $_"
+        return
+    }
+
+    # Create a temporary folder for the snapshot clone.
+    $tempPath = [System.IO.Path]::GetTempPath()
+    $tempSnapshotDir = Join-Path -Path $tempPath -ChildPath ("RepoSnapshot_" + [System.Guid]::NewGuid().ToString())
+    try {
+        New-Item -Path $tempSnapshotDir -ItemType Directory -Force | Out-Null
+    }
+    catch {
+        Write-Error "Failed to create temporary snapshot folder '$tempSnapshotDir': $_"
+        return
+    }
+
+    # Clone the repository snapshot into the temporary folder.
+    Write-Host "Cloning branch '$BranchName' from repository '$RepositoryUrl' into temporary folder..."
+    git clone --depth 1 -b $BranchName $RepositoryUrl $tempSnapshotDir
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Git clone operation failed."
+        return
+    }
+
+    # Remove the .git folder from the temporary snapshot to eliminate Git versioning.
+    $gitFolder = Join-Path -Path $tempSnapshotDir -ChildPath ".git"
+    if (Test-Path -Path $gitFolder) {
+        Write-Host "Removing Git versioning from temporary snapshot..."
+        try {
+            Remove-Item -Path $gitFolder -Recurse -Force
+            Write-Host ".git folder removed successfully."
+        }
+        catch {
+            Write-Warning "Failed to remove .git folder: $_"
+        }
+    }
+    else {
+        Write-Warning ".git folder not found in temporary snapshot."
+    }
+
+    # Derive a safe repository name from the RepositoryUrl.
+    try {
+        $repoName = Get-SafeDirectoryNameFromUrl -RepositoryUrl $RepositoryUrl
+        if ([string]::IsNullOrWhiteSpace($repoName)) {
+            throw "Repository name could not be determined from URL."
+        }
+        $finalDestination = Join-Path -Path $Destination -ChildPath $repoName
+
+        # Ensure the final destination directory exists.
+        if (-not (Test-Path -Path $finalDestination)) {
+            New-Item -Path $finalDestination -ItemType Directory -Force | Out-Null
+        }
+    }
+    catch {
+        Write-Error "Error determining repository name: $_"
+        return
+    }
+
+    # Use the helper function to mirror the snapshot.
+    Mirror-DirectorySnapshot -Source $tempSnapshotDir -Destination $finalDestination
+
+    # Clean up the temporary snapshot folder.
+    Write-Host "Cleaning up temporary snapshot folder..."
+    try {
+        Remove-Item -Path $tempSnapshotDir -Recurse -Force
+        Write-Host "Temporary folder removed."
+    }
+    catch {
+        Write-Warning "Failed to remove temporary folder '$tempSnapshotDir': $_"
+    }
+}
+
+
+#Copy-GitRepoSnapshot -BranchName "main" -RepositoryUrl "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX.git" -Destination "C:\temp\test"
