@@ -1003,12 +1003,75 @@ function Copy-DirectorySnapshot {
     }
 }
 
+function Sync-RemoteRepoFiles {
+    <#
+    .SYNOPSIS
+        Synchronizes files from a remote Git repository to a local destination.
+
+    .DESCRIPTION
+        This function performs the following steps:
+          1. Retrieves commit and file information from a remote Git repository.
+          2. Compares remote file timestamps with those in a specified local destination.
+          3. Performs a sparse checkout of the remote repository for files that are newer than the local copies.
+          4. Copies the checked-out files to the local destination with an option to overwrite existing files.
+
+    .PARAMETER RemoteRepo
+        The URL of the remote Git repository.
+
+    .PARAMETER BranchName
+        The branch to operate on.
+
+    .PARAMETER LocalDestination
+        The local directory that serves as the destination for file comparison and copy.
+
+    .EXAMPLE
+        Sync-RemoteRepoFiles -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command" -LocalDestination "C:\temp\\BlackBytesBox.Manifested.GitX"
+    #>
+    [CmdletBinding()]
+    [alias("srrf")]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RemoteRepo,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$BranchName,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$LocalDestination
+    )
+    
+    try {
+        Write-Verbose "Retrieving remote repository file information..."
+        $remoteFileInfo = Get-RemoteRepoFileInfo -RemoteRepo $RemoteRepo -BranchName $BranchName
+        
+        Write-Verbose "Comparing local files with remote file timestamps..."
+        $timeCompareResult = Compare-LocalRemoteFileTimestamps -Files $remoteFileInfo.Files -CompareDestination $LocalDestination
+        
+        if (-not $timeCompareResult.RemoteNewer -or $timeCompareResult.RemoteNewer.Count -eq 0) {
+            Write-Verbose "No remote files are newer than local copies. Nothing to sync."
+            return
+        }
+        
+        Write-Verbose "Performing sparse checkout for files with newer remote versions..."
+        $clonedFiles = Get-RemoteRepoFiles -RemoteRepo $remoteFileInfo.RemoteRepo -BranchName $remoteFileInfo.BranchName -Files $timeCompareResult.RemoteNewer
+        
+        Write-Verbose "Copying updated files to local destination..."
+        Copy-DirectorySnapshot -Source $clonedFiles.LocalPath -Destination $LocalDestination -Overwrite
+        
+        Write-Output "Sync complete."
+    }
+    catch {
+        Write-Error "An error occurred during synchronization: $_"
+    }
+}
 
 
-$remoteFileInfo = Get-RemoteRepoFileInfo -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command"
-$timeCompareResult = Compare-LocalRemoteFileTimestamps $remoteFileInfo.Files -CompareDestination "C:\temp\test\BlackBytesBox.Manifested.GitXx"
-$clonedFiles = Get-RemoteRepoFiles -RemoteRepo $nfo.RemoteRepo -BranchName $nfo.BranchName -Files $timeCompareResult.RemoteNewer 
-Copy-DirectorySnapshot -Source "$($clonedFiles.LocalPath)" -Destination "C:\temp\test\BlackBytesBox.Manifested.GitXx" -Overwrite
+Sync-RemoteRepoFiles -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "main" -LocalDestination "C:\temp\BlackBytesBox.Manifested.GitX"
+
+#$remoteFileInfo = Get-RemoteRepoFileInfo -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command"
+#$timeCompareResult = Compare-LocalRemoteFileTimestamps $remoteFileInfo.Files -CompareDestination "C:\temp\test\BlackBytesBox.Manifested.GitXx"
+#$clonedFiles = Get-RemoteRepoFiles -RemoteRepo $nfo.RemoteRepo -BranchName $nfo.BranchName -Files $timeCompareResult.RemoteNewer 
+#Copy-DirectorySnapshot -Source "$($clonedFiles.LocalPath)" -Destination "C:\temp\test\BlackBytesBox.Manifested.GitXx" -Overwrite
 
 #Mirror-DirectorySnapshot -Source "$($foo.LocalPath)" -Destination "C:\temp\test\BlackBytesBox.Manifested.GitX" -RetryCount 5 -RetryDelay 3000
 $x = 1
