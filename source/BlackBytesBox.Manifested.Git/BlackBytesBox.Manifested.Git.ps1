@@ -1064,14 +1064,3 @@ function Sync-RemoteRepoFiles {
         Write-Error "An error occurred during synchronization: $_"
     }
 }
-
-
-Sync-RemoteRepoFiles -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "main" -LocalDestination "C:\temp\BlackBytesBox.Manifested.GitX"
-
-#$remoteFileInfo = Get-RemoteRepoFileInfo -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command"
-#$timeCompareResult = Compare-LocalRemoteFileTimestamps $remoteFileInfo.Files -CompareDestination "C:\temp\test\BlackBytesBox.Manifested.GitXx"
-#$clonedFiles = Get-RemoteRepoFiles -RemoteRepo $nfo.RemoteRepo -BranchName $nfo.BranchName -Files $timeCompareResult.RemoteNewer 
-#Copy-DirectorySnapshot -Source "$($clonedFiles.LocalPath)" -Destination "C:\temp\test\BlackBytesBox.Manifested.GitXx" -Overwrite
-
-#Mirror-DirectorySnapshot -Source "$($foo.LocalPath)" -Destination "C:\temp\test\BlackBytesBox.Manifested.GitX" -RetryCount 5 -RetryDelay 3000
-$x = 1
