@@ -864,7 +864,7 @@ function Compare-LocalRemoteFileTimestamps {
         }
         else {
             $localFile = $localFilesDict[$normalizedRemotePath]
-            $localTime = $localFile.LastWriteTimeUtc
+            $localTime = $localFile.LastWriteTime
             $remoteTime = $Files[$remotePath].Timestamp
             if ($localTime -lt $remoteTime) {
                 # Local file is older; include for checkout.
@@ -978,7 +978,7 @@ function Copy-DirectorySnapshot {
             try {
                 # Copy-Item supports -Force, which will overwrite the destination if it exists.
                 Copy-Item -Path $file.FullName -Destination $destFile -Force:$Overwrite -ErrorAction Stop
-                Write-Verbose "$action file '$destFile' from source '$($file.FullName)'."
+                Write-Output "$action file '$destFile' from source '$($file.FullName)'."
                 break  # Success; exit retry loop.
             }
             catch {
@@ -998,8 +998,8 @@ function Copy-DirectorySnapshot {
 
 $remoteFileInfo = Get-RemoteRepoFileInfo -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command"
 $result = Compare-LocalRemoteFileTimestamps $remoteFileInfo.Files -CompareDestination "C:\temp\test\BlackBytesBox.Manifested.GitX"
-$foo = Get-RemoteRepoFiles -RemoteRepo $nfo.RemoteRepo -BranchName $nfo.BranchName -Files $result.RemoteNewer
-Copy-DirectorySnapshot -Source "$($foo.LocalPath)" -Destination "C:\temp\test\BlackBytesBox.Manifested.GitX"
+$foo = Get-RemoteRepoFiles -RemoteRepo $nfo.RemoteRepo -BranchName $nfo.BranchName -Files $result.RemoteNewer 
+Copy-DirectorySnapshot -Source "$($foo.LocalPath)" -Destination "C:\temp\test\BlackBytesBox.Manifested.GitX" -Overwrite
 
 #Mirror-DirectorySnapshot -Source "$($foo.LocalPath)" -Destination "C:\temp\test\BlackBytesBox.Manifested.GitX" -RetryCount 5 -RetryDelay 3000
 $x = 1
