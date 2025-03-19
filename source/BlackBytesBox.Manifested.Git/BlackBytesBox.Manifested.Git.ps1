@@ -750,7 +750,7 @@ function Get-RemoteRepoFiles {
         $fileList = $Files.Keys
 
         if (-not $fileList -or $fileList.Count -eq 0) {
-            Write-Warning "No files specified. Aborting sparse checkout; returning empty file list."
+            Write-Output "No files specified. Aborting sparse checkout; returning empty file list."
             
             # Create the output object with an empty Files array.
             $output = [PSCustomObject]@{
@@ -1006,9 +1006,9 @@ function Copy-DirectorySnapshot {
 
 
 $remoteFileInfo = Get-RemoteRepoFileInfo -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command"
-$result = Compare-LocalRemoteFileTimestamps $remoteFileInfo.Files -CompareDestination "C:\temp\test\BlackBytesBox.Manifested.GitX"
-$foo = Get-RemoteRepoFiles -RemoteRepo $nfo.RemoteRepo -BranchName $nfo.BranchName -Files $result.RemoteNewer 
-Copy-DirectorySnapshot -Source "$($foo.LocalPath)" -Destination "C:\temp\test\BlackBytesBox.Manifested.GitX" -Overwrite
+$timeCompareResult = Compare-LocalRemoteFileTimestamps $remoteFileInfo.Files -CompareDestination "C:\temp\test\BlackBytesBox.Manifested.GitXx"
+$clonedFiles = Get-RemoteRepoFiles -RemoteRepo $nfo.RemoteRepo -BranchName $nfo.BranchName -Files $timeCompareResult.RemoteNewer 
+Copy-DirectorySnapshot -Source "$($clonedFiles.LocalPath)" -Destination "C:\temp\test\BlackBytesBox.Manifested.GitXx" -Overwrite
 
 #Mirror-DirectorySnapshot -Source "$($foo.LocalPath)" -Destination "C:\temp\test\BlackBytesBox.Manifested.GitX" -RetryCount 5 -RetryDelay 3000
 $x = 1
