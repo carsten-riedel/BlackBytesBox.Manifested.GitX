@@ -740,6 +740,19 @@ function Get-RemoteRepoFiles {
         # Extract the file list from the keys of the Files hashtable.
         $fileList = $Files.Keys
 
+        if (-not $fileList -or $fileList.Count -eq 0) {
+            Write-Warning "No files specified. Aborting sparse checkout; returning empty file list."
+            
+            # Create the output object with an empty Files array.
+            $output = [PSCustomObject]@{
+                RemoteRepo = $RemoteRepo
+                BranchName = $BranchName
+                LocalPath  = $tempDir.FullName
+                Files      = @()  # Empty array
+            }
+            return $output
+        }
+
         # Set sparse-checkout paths to only include the specified files.
         git sparse-checkout set $fileList | Out-Null
 
@@ -871,3 +884,122 @@ function Compare-LocalRemoteFileTimestamps {
 }
 
 
+function Copy-DirectorySnapshot {
+    <#
+    .SYNOPSIS
+        Copies a directory snapshot from a source to a destination with optional overwrite and retry logic.
+
+    .DESCRIPTION
+        This function copies all files from the source directory to the destination directory while preserving the folder structure.
+        If a destination file already exists, the function will either overwrite it when the -Overwrite switch is provided or skip copying and issue a warning.
+        You can also specify how many retry attempts should be made and the delay between retries in case of a failure.
+
+    .PARAMETER Source
+        The full path of the source directory.
+
+    .PARAMETER Destination
+        The full path of the destination directory.
+
+    .PARAMETER RetryCount
+        The number of retry attempts for copying a file if an error occurs. The default value is 5.
+
+    .PARAMETER RetryDelay
+        The delay in milliseconds between retry attempts. The default is 3000 ms.
+
+    .PARAMETER Overwrite
+        When set, existing files in the destination will be overwritten. If omitted, existing files are skipped and a warning is issued.
+
+    .EXAMPLE
+        Copy-DirectorySnapshot -Source "C:\SourceDir" -Destination "C:\DestDir" -RetryCount 3 -RetryDelay 2000 -Overwrite
+        # This copies files from C:\SourceDir to C:\DestDir, overwriting existing files, with up to 3 retries and a 2000ms delay between attempts.
+
+    .EXAMPLE
+        Copy-DirectorySnapshot -Source "C:\SourceDir" -Destination "C:\DestDir"
+        # This copies files without overwriting files that already exist, and a warning is shown for each file that is skipped.
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Source,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Destination,
+
+        [int]$RetryCount = 5,
+
+        [int]$RetryDelay = 3000,
+
+        [switch]$Overwrite
+    )
+
+    # Check if source exists.
+    if (-not (Test-Path -Path $Source -PathType Container)) {
+        Write-Error "Source directory '$Source' does not exist."
+        return
+    }
+
+    # Create destination directory if it doesn't exist.
+    if (-not (Test-Path -Path $Destination -PathType Container)) {
+        Write-Verbose "Destination '$Destination' does not exist. Creating..."
+        New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    }
+
+    # Retrieve all files recursively from the source.
+    $files = Get-ChildItem -Path $Source -Recurse -File
+
+    foreach ($file in $files) {
+        # Determine the file's relative path and corresponding destination path.
+        $relativePath = $file.FullName.Substring($Source.Length)
+        $destFile = Join-Path -Path $Destination -ChildPath $relativePath
+
+        # Ensure the destination directory for this file exists.
+        $destDir = Split-Path -Path $destFile -Parent
+        if (-not (Test-Path -Path $destDir -PathType Container)) {
+            New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+        }
+
+        # If the destination file exists, decide what to do based on the Overwrite switch.
+        if (Test-Path -Path $destFile) {
+            if ($Overwrite) {
+                $action = "Overwriting"
+            }
+            else {
+                Write-Warning "File '$destFile' already exists. Skipping copy."
+                continue
+            }
+        }
+        else {
+            $action = "Copying"
+        }
+
+        # Attempt to copy the file with retries.
+        $attempt = 0
+        while ($attempt -le $RetryCount) {
+            try {
+                # Copy-Item supports -Force, which will overwrite the destination if it exists.
+                Copy-Item -Path $file.FullName -Destination $destFile -Force:$Overwrite -ErrorAction Stop
+                Write-Verbose "$action file '$destFile' from source '$($file.FullName)'."
+                break  # Success; exit retry loop.
+            }
+            catch {
+                $attempt++
+                if ($attempt -gt $RetryCount) {
+                    Write-Warning "Failed to copy '$($file.FullName)' to '$destFile' after $RetryCount attempts. Error: $_"
+                }
+                else {
+                    Start-Sleep -Milliseconds $RetryDelay
+                }
+            }
+        }
+    }
+}
+
+
+
+$remoteFileInfo = Get-RemoteRepoFileInfo -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command"
+$result = Compare-LocalRemoteFileTimestamps $remoteFileInfo.Files -CompareDestination "C:\temp\test\BlackBytesBox.Manifested.GitX"
+$foo = Get-RemoteRepoFiles -RemoteRepo $nfo.RemoteRepo -BranchName $nfo.BranchName -Files $result.RemoteNewer
+Copy-DirectorySnapshot -Source "$($foo.LocalPath)" -Destination "C:\temp\test\BlackBytesBox.Manifested.GitX"
+
+#Mirror-DirectorySnapshot -Source "$($foo.LocalPath)" -Destination "C:\temp\test\BlackBytesBox.Manifested.GitX" -RetryCount 5 -RetryDelay 3000
+$x = 1
