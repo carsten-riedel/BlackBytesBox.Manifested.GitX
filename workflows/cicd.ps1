@@ -23,8 +23,8 @@ Install-Module -Name BlackBytesBox.Manifested.Git -Repository "PSGallery" -Force
 
 
 $result1 = Convert-DateTimeTo64SecPowershellVersion -VersionBuild 0
-$result2 = Get-GitCurrentBranch
-$result4 = Get-GitCurrentBranchRoot
+#$result2 = Get-GitCurrentBranch
+#$result4 = Get-GitCurrentBranchRoot
 $result3 = Get-GitTopLevelDirectory
 
 
