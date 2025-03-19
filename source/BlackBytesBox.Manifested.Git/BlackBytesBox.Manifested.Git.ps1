@@ -638,8 +638,17 @@ function Get-RemoteRepoFileInfo {
             
             if ($commitInfo) {
                 $parts = $commitInfo -split "\|", 2
-                # Convert the timestamp string to a DateTime object.
-                $timestamp = [datetime]::Parse($parts[0])
+                try {
+                    # Use DateTimeOffset::ParseExact to accurately parse the ISO 8601 timestamp with timezone offset.
+                    $timestampOffset = [DateTimeOffset]::ParseExact($parts[0], "yyyy-MM-ddTHH:mm:sszzz", $null)
+                    # Optionally, convert to a DateTime in local time:
+                    $timestamp = $timestampOffset.UtcDateTime
+                    # Alternatively, if you want to retain offset information, you could store $timestampOffset directly.
+                }
+                catch {
+                    Write-Warning "Failed to parse timestamp '$($parts[0])'."
+                    $timestamp = $null
+                }
                 $comment = if ($parts.Count -gt 1) { $parts[1] } else { "" }
             }
             else {
@@ -864,7 +873,7 @@ function Compare-LocalRemoteFileTimestamps {
         }
         else {
             $localFile = $localFilesDict[$normalizedRemotePath]
-            $localTime = $localFile.LastWriteTime
+            $localTime = $localFile.LastWriteTimeUtc
             $remoteTime = $Files[$remotePath].Timestamp
             if ($localTime -lt $remoteTime) {
                 # Local file is older; include for checkout.
