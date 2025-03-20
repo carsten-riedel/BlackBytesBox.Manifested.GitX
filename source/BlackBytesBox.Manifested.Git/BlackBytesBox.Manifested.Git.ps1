@@ -1148,70 +1148,7 @@ function Copy-DirectorySnapshot {
     }
 }
 
-
 function Sync-RemoteRepoFiles {
-    <#
-    .SYNOPSIS
-        Synchronizes files from a remote Git repository to a local destination.
-
-    .DESCRIPTION
-        This function performs the following steps:
-          1. Retrieves commit and file information from a remote Git repository.
-          2. Compares remote file timestamps with those in a specified local destination.
-          3. Performs a sparse checkout of the remote repository for files that are newer than the local copies.
-          4. Copies the checked-out files to the local destination with an option to overwrite existing files.
-
-    .PARAMETER RemoteRepo
-        The URL of the remote Git repository.
-
-    .PARAMETER BranchName
-        The branch to operate on.
-
-    .PARAMETER LocalDestination
-        The local directory that serves as the destination for file comparison and copy.
-
-    .EXAMPLE
-        Sync-RemoteRepoFiles -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command" -LocalDestination "C:\temp\\BlackBytesBox.Manifested.GitX"
-    #>
-    [CmdletBinding()]
-    [alias("srrf")]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$RemoteRepo,
-        
-        [Parameter(Mandatory = $true)]
-        [string]$BranchName,
-        
-        [Parameter(Mandatory = $true)]
-        [string]$LocalDestination
-    )
-    
-    try {
-        Write-Verbose "Retrieving remote repository file information..."
-        $remoteFileInfo = Get-RemoteRepoFileInfo -RemoteRepo $RemoteRepo -BranchName $BranchName
-        
-        Write-Verbose "Comparing local files with remote file timestamps..."
-        $timeCompareResult = Compare-LocalRemoteFileTimestamps -Files $remoteFileInfo.Files -CompareDestination $LocalDestination
-        
-        if (-not $timeCompareResult.RemoteNewer -or $timeCompareResult.RemoteNewer.Count -eq 0) {
-            Write-Verbose "No remote files are newer than local copies. Nothing to sync."
-            return
-        }
-        
-        Write-Verbose "Performing sparse checkout for files with newer remote versions..."
-        $clonedFiles = Get-RemoteRepoFiles -RemoteRepo $remoteFileInfo.RemoteRepo -BranchName $remoteFileInfo.BranchName -Files $timeCompareResult.RemoteNewer
-        
-        Write-Verbose "Copying updated files to local destination..."
-        Copy-DirectorySnapshot -Source $clonedFiles.LocalPath -Destination $LocalDestination -Overwrite
-        
-        Write-Output "Sync complete."
-    }
-    catch {
-        Write-Error "An error occurred during synchronization: $_"
-    }
-}
-
-function Sync-RemoteRepoFiles2 {
     <#
     .SYNOPSIS
         Synchronizes files from a remote Git repository to a local destination.
@@ -1237,7 +1174,7 @@ function Sync-RemoteRepoFiles2 {
         When set, extra files and directories in the local destination that are not present in the remote repository will be removed.
 
     .EXAMPLE
-        Sync-RemoteRepoFiles2 -RemoteRepo "https://github.com/example/repo.git" -BranchName "feature/command" -LocalDestination "C:\temp\Repo" -PurgeExtraFiles
+        Sync-RemoteRepoFiles -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "main" -LocalDestination "C:\temp\test" -PurgeExtraFiles
         # This synchronizes the remote repository to the local destination, overwriting outdated files and purging extra files and directories.
     #>
     [CmdletBinding()]
@@ -1260,35 +1197,34 @@ function Sync-RemoteRepoFiles2 {
         $remoteFileInfo = Get-RemoteRepoFileInfo -RemoteRepo $RemoteRepo -BranchName $BranchName
        
         if (-not $remoteFileInfo.Files -or $remoteFileInfo.Files.Count -eq 0) {
-            Write-Verbose "No remote files to sync."
-            return
+            Write-Verbose "No remote files found in repository."
         }
+        else {
+            Write-Verbose "Comparing local files with remote file timestamps..."
+            $timeCompareResult = Compare-LocalRemoteFileTimestamps -Files $remoteFileInfo.Files -CompareDestination $LocalDestination
 
-        Write-Verbose "Comparing local files with remote file timestamps..."
-        $timeCompareResult = Compare-LocalRemoteFileTimestamps -Files $remoteFileInfo.Files -CompareDestination $LocalDestination
-
-        if (-not $timeCompareResult.RemoteNewer -or $remoteFileInfo.RemoteNewer.Count -eq 0) {
-            Write-Verbose "No remote files to sync."
-            return
+            if ($timeCompareResult.RemoteNewer -and $timeCompareResult.RemoteNewer.Count -gt 0) {
+                Write-Verbose "Performing sparse checkout for files with newer remote versions..."
+                $clonedFiles = Get-RemoteRepoFiles -RemoteRepo $remoteFileInfo.RemoteRepo -BranchName $remoteFileInfo.BranchName -Files $timeCompareResult.RemoteNewer
+                
+                Write-Verbose "Copying updated files to local destination..."
+                # Copy updated files from the sparse checkout location to the local destination.
+                Copy-Item -Path (Join-Path $clonedFiles.LocalPath '*') -Destination $LocalDestination -Recurse -Force -ErrorAction Stop
+            }
+            else {
+                Write-Verbose "No remote files to sync."
+            }
         }
         
-        Write-Verbose "Performing sparse checkout for files with newer remote versions..."
-        $clonedFiles = Get-RemoteRepoFiles -RemoteRepo $remoteFileInfo.RemoteRepo -BranchName $remoteFileInfo.BranchName -Files $timeCompareResult.RemoteNewer
-        
-        Write-Verbose "Copying updated files to local destination..."
-        # Copy updated files from the sparse checkout location to the local destination.
-        Copy-Item -Path (Join-Path $clonedFiles.LocalPath '*') -Destination $LocalDestination -Recurse -Force -ErrorAction Stop
-
-        # Purge extra files based on $remoteFileInfo.Files if the switch is set.
         if ($PurgeExtraFiles) {
             Write-Verbose "Purging extra files from local destination based on remote repository file list..."
-            # Assuming each file object in $remoteFileInfo.Files has a property 'Path' representing its relative path.
-            $remoteRelativePaths = $remoteFileInfo.Files | ForEach-Object { $_.Path }
+            # Normalize remote file paths by replacing forward slashes with backslashes.
+            $remoteRelativePaths = $remoteFileInfo.Files | ForEach-Object { ($_.Keys) -replace '/', '\' }
             
             # Purge extra files.
             $localFiles = Get-ChildItem -Path $LocalDestination -Recurse -File
             foreach ($localFile in $localFiles) {
-                $localRelativePath = $localFile.FullName.Substring($LocalDestination.Length).TrimStart('\')
+                $localRelativePath = ($localFile.FullName.Substring($LocalDestination.Length).TrimStart('\')) -replace '/', '\'
                 if ($remoteRelativePaths -notcontains $localRelativePath) {
                     try {
                         Remove-Item -Path $localFile.FullName -Force -ErrorAction Stop
@@ -1328,9 +1264,9 @@ function Sync-RemoteRepoFiles2 {
 
 
 
-Sync-RemoteRepoFiles2 -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command" -LocalDestination "C:\temp\baaasource" -PurgeExtraFiles
 
 
+#Sync-RemoteRepoFiles2 -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "main" -LocalDestination "C:\temp\abaaasource" -PurgeExtraFiles
 #Sync-RemoteRepoFiles3 -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command" -LocalDestination "C:\temp\xBlackBytesBox.Manifested.GitX"
 #Sync-RemoteRepoFiles3 -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command"
 #Sync-RemoteRepoFiles3 /?
