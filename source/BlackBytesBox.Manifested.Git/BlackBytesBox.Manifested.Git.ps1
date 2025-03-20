@@ -296,11 +296,11 @@ function Mirror-DirectorySnapshot {
     Mirrors the content of a source directory to a destination directory using native PowerShell commands.
 
     .DESCRIPTION
-    This function synchronizes the destination directory with the source directory.
-    It will:
-      - Remove any files or directories in the destination that do not exist in the source.
-      - Copy new or updated files and directories from the source to the destination.
-    This effectively mirrors the source directory into the destination without using Robocopy.
+    This function synchronizes the destination directory with the source directory. It supports three modes:
+      - Missing: Only copy items that do not exist in the destination.
+      - SmartSync (default): Update items only if the source file is newer or has a different size.
+      - All: Copy every item from the source to the destination regardless of file attributes.
+    Additionally, if -PurgeExtraFiles is enabled (default $true), any files or directories in the destination that do not exist in the source are removed.
     The function includes simple retry logic for file copy operations in case target files are in use.
 
     .PARAMETER Source
@@ -310,14 +310,25 @@ function Mirror-DirectorySnapshot {
     The destination directory path.
 
     .PARAMETER RetryCount
-    The number of times to retry a failed file copy operation. Defaults to 3.
+    The number of times to retry a failed file copy operation. Defaults to 10.
 
     .PARAMETER RetryDelay
-    The delay in milliseconds between retry attempts. Defaults to 2000 (2 seconds).
+    The delay in milliseconds between retry attempts. Defaults to 6000 (6 seconds).
+
+    .PARAMETER Mode
+    The copy mode to use. Valid values are:
+        - Missing: Only copy missing items.
+        - SmartSync: Copy missing items and update outdated items (default).
+        - All: Copy all files unconditionally.
+
+    .PARAMETER PurgeExtraFiles
+    Indicates whether files and directories in the destination that do not exist in the source should be removed.
+    Defaults to $true.
 
     .EXAMPLE
-    Mirror-DirectorySnapshot -Source "C:\Temp\Snapshot" -Destination "C:\MyProject\repo" -RetryCount 5 -RetryDelay 3000
-    Mirrors the snapshot directory to the specified destination with up to 5 retries and a 3000-millisecond delay between retries.
+    Mirror-DirectorySnapshot -Source "C:\Temp\Snapshot" -Destination "C:\MyProject\repo" -RetryCount 5 -RetryDelay 3000 -Mode All -PurgeExtraFiles $true
+    Mirrors the snapshot directory to the specified destination with up to 5 retries, a 3000-millisecond delay between retries,
+    copying all files unconditionally and purging extra files.
     #>
     [CmdletBinding()]
     param (
@@ -331,10 +342,17 @@ function Mirror-DirectorySnapshot {
         [int]$RetryCount = 10,
 
         [Parameter(Mandatory = $false)]
-        [int]$RetryDelay = 6000
+        [int]$RetryDelay = 6000,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateSet("Missing", "SmartSync", "All")]
+        [string]$Mode = "SmartSync",
+
+        [Parameter(Mandatory = $false)]
+        [bool]$PurgeExtraFiles = $true
     )
 
-    Write-Host "Synchronizing target directory '$Destination' with the snapshot..."
+    Write-Host "Synchronizing target directory '$Destination' with the snapshot in '$Mode' mode..."
 
     # Ensure destination exists.
     if (-not (Test-Path -Path $Destination)) {
@@ -347,24 +365,27 @@ function Mirror-DirectorySnapshot {
         }
     }
 
-    # Get relative paths for items in source and destination.
-    $sourceItems = Get-ChildItem -Path $Source -Recurse -Force | ForEach-Object {
-        $_.FullName.Substring($Source.Length).TrimStart('\')
-    }
-    $destinationItems = Get-ChildItem -Path $Destination -Recurse -Force | ForEach-Object {
-        $_.FullName.Substring($Destination.Length).TrimStart('\')
-    }
-
-    # Remove items from destination that do not exist in source.
-    foreach ($destRelative in $destinationItems) {
-        if ($sourceItems -notcontains $destRelative) {
-            $destFullPath = Join-Path -Path $Destination -ChildPath $destRelative
-            try {
-                Remove-Item -Path $destFullPath -Recurse -Force -ErrorAction Stop
-                Write-Host "Removed extra item: $destFullPath"
-            }
-            catch {
-                Write-Warning "Failed to remove extra item '$destFullPath': $_"
+    # Purge extra files if enabled.
+    if ($PurgeExtraFiles) {
+        # Get relative paths for items in source and destination.
+        $sourceItems = Get-ChildItem -Path $Source -Recurse -Force | ForEach-Object {
+            $_.FullName.Substring($Source.Length).TrimStart('\')
+        }
+        $destinationItems = Get-ChildItem -Path $Destination -Recurse -Force | ForEach-Object {
+            $_.FullName.Substring($Destination.Length).TrimStart('\')
+        }
+    
+        # Remove items from destination that do not exist in source.
+        foreach ($destRelative in $destinationItems) {
+            if ($sourceItems -notcontains $destRelative) {
+                $destFullPath = Join-Path -Path $Destination -ChildPath $destRelative
+                try {
+                    Remove-Item -Path $destFullPath -Recurse -Force -ErrorAction Stop
+                    Write-Host "Removed extra item: $destFullPath"
+                }
+                catch {
+                    Write-Warning "Failed to remove extra item '$destFullPath': $_"
+                }
             }
         }
     }
@@ -389,15 +410,23 @@ function Mirror-DirectorySnapshot {
         else {
             $copyFile = $false
             if (-not (Test-Path -Path $destinationPath)) {
+                # File is missing, so always copy.
                 $copyFile = $true
             }
             else {
-                # Compare file sizes and LastWriteTime to decide if copy is needed.
-                $destFile = Get-Item -Path $destinationPath
-                if (($destFile.Length -ne $item.Length) -or ($destFile.LastWriteTime -lt $item.LastWriteTime)) {
-                    $copyFile = $true
+                switch ($Mode) {
+                    "Missing" { $copyFile = $false }  # Do not update existing files.
+                    "SmartSync" {
+                        # Only update if source file is different.
+                        $destFile = Get-Item -Path $destinationPath
+                        if (($destFile.Length -ne $item.Length) -or ($destFile.LastWriteTime -lt $item.LastWriteTime)) {
+                            $copyFile = $true
+                        }
+                    }
+                    "All" { $copyFile = $true }  # Always copy file.
                 }
             }
+
             if ($copyFile) {
                 $attempt = 0
                 $copied = $false
@@ -409,7 +438,7 @@ function Mirror-DirectorySnapshot {
                         $copied = $true
                     }
                     catch {
-                        Write-Warning "Attempt $(attempt): Failed to copy file '$($item.FullName)' to '$destinationPath': $_"
+                        Write-Warning "Attempt $($attempt): Failed to copy file '$($item.FullName)' to '$destinationPath': $_"
                         if ($attempt -lt $RetryCount) {
                             Write-Host "Retrying in $RetryDelay milliseconds..."
                             Start-Sleep -Milliseconds $RetryDelay
@@ -425,33 +454,87 @@ function Mirror-DirectorySnapshot {
     Write-Host "Target directory synchronized successfully."
 }
 
+function Restore-GitFileTimes {
+    <#
+    .SYNOPSIS
+    Restores original file timestamps based on the last commit times in a Git repository.
+    
+    .DESCRIPTION
+    Iterates over all files (excluding the .git folder) in the specified repository directory.
+    For each file, it retrieves the most recent commit timestamp using Git and updates the file's LastWriteTime accordingly.
+    
+    .PARAMETER RepoDir
+    The root directory of the cloned Git repository.
+    
+    .EXAMPLE
+    Restore-GitFileTimes -RepoDir "C:\Temp\RepoSnapshot"
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$RepoDir
+    )
+    
+    Write-Host "Restoring original file timestamps from Git commit dates..."
+    # Get all files recursively, excluding the .git folder.
+    $files = Get-ChildItem -Path $RepoDir -Recurse -File | Where-Object { $_.FullName -notmatch '\\.git\\' }
+    
+    foreach ($file in $files) {
+        # Compute relative path required by git log.
+        $relativePath = $file.FullName.Substring($RepoDir.Length).TrimStart('\')
+        # Temporarily change directory to the repository root so Git can find the .git folder.
+        $currentDir = Get-Location
+        Set-Location $RepoDir
+        # Retrieve the commit timestamp (Unix epoch) for the file.
+        $commitTimeStr = git log -1 --format=%ct -- $relativePath 2>$null
+        Set-Location $currentDir
+        if ($commitTimeStr -and $commitTimeStr.Trim() -match '^\d+$') {
+            $commitTime = [datetime]::UnixEpoch.AddSeconds([double]$commitTimeStr.Trim())
+            try {
+                $file.LastWriteTime = $commitTime
+                Write-Host "Set timestamp for $($file.FullName) to $commitTime"
+            }
+            catch {
+                Write-Warning "Failed to set timestamp for $($file.FullName): $_"
+            }
+        }
+        else {
+            Write-Warning "Could not retrieve commit time for $($file.FullName)."
+        }
+    }
+}
+
 function Copy-GitRepoSnapshot {
     <#
     .SYNOPSIS
-    Updates a target directory to mirror the latest snapshot of a remote Git repository branch.
-
+    Updates a target directory to mirror a snapshot of a remote Git repository branch.
+    
     .DESCRIPTION
     This function updates an existing target directory (which may not be empty) to match the state of a specified remote Git repository branch.
     It performs the following steps:
       1. Validates that the remote repository is accessible and that the specified branch exists.
       2. Clones a shallow snapshot (depth 1) of the branch into a temporary folder.
-      3. Removes the .git folder from the temporary snapshot to eliminate Git versioning.
-      4. Derives a safe repository name from the RepositoryUrl and appends it to the target directory.
-      5. Calls Mirror-DirectorySnapshot to mirror the temporary snapshot to the repository-named subdirectory.
-      6. Cleans up the temporary snapshot folder.
-
+      3. Optionally selects a subfolder within the clone if specified; if not, the clone root is used.
+      4. Restores original file timestamps from Git commit dates.
+      5. Removes the .git folder from the temporary snapshot to eliminate Git versioning.
+      6. Calls Mirror-DirectorySnapshot to mirror the selected snapshot to the target directory.
+      7. Cleans up the temporary snapshot folder.
+    
     .PARAMETER BranchName
     The name of the branch to fetch the snapshot from. This parameter is mandatory.
-
+    
     .PARAMETER RepositoryUrl
-    The URL of the remote Git repository. Defaults to "https://github.com/example/repo.git" if not provided.
-
+    The URL of the remote Git repository. This parameter is mandatory and must be in a valid format (e.g. starting with http://, https://, or git@).
+    
     .PARAMETER Destination
     The target directory to be updated with the snapshot. If not provided or null, a temporary folder is used.
-
+    
+    .PARAMETER Subfolder
+    An optional subfolder (relative to the clone root) within the temporary snapshot directory to be copied to the destination.
+    If not specified, the entire clone root is used.
+    
     .EXAMPLE
-    Copy-GitRepoSnapshot -BranchName "main" -Destination "C:\MyProject"
-    Updates the "C:\MyProject" directory (with the repository name appended) to mirror the latest snapshot of the "main" branch from the remote repository.
+    Copy-GitRepoSnapshot -BranchName "main" -RepositoryUrl "https://github.com/example/repo.git" -Destination "C:\MyProject" -Subfolder "src"
+    Updates the "C:\MyProject" directory to mirror the snapshot of the "src" subfolder from the cloned repository.
     #>
     [CmdletBinding()]
     [alias("cgrs")]
@@ -459,20 +542,35 @@ function Copy-GitRepoSnapshot {
         [Parameter(Mandatory = $true)]
         [string]$BranchName,
         
-        [Parameter(Mandatory = $false)]
-        [string]$RepositoryUrl = "https://github.com/example/repo.git",
+        [Parameter(Mandatory = $true)]
+        [string]$RepositoryUrl,
         
         [Parameter(Mandatory = $false)]
-        [string]$Destination
+        [string]$Destination,
+        
+        [Parameter(Mandatory = $false)]
+        [string]$Subfolder
     )
-
+    
+    # Check if RepositoryUrl is provided and not empty.
+    if ([string]::IsNullOrWhiteSpace($RepositoryUrl)) {
+        Write-Error "RepositoryUrl is mandatory and must be provided."
+        return
+    }
+    
+    # Validate that RepositoryUrl is in a recognized format.
+    if ($RepositoryUrl -notmatch '^(https?:\/\/|git@)') {
+        Write-Error "RepositoryUrl '$RepositoryUrl' is not in a recognized format. Please provide a valid remote Git repository URL."
+        return
+    }
+    
     # If Destination is not provided or is empty, create a temporary folder for the target.
     if ([string]::IsNullOrWhiteSpace($Destination)) {
         $tempPath = [System.IO.Path]::GetTempPath()
         $Destination = Join-Path -Path $tempPath -ChildPath ("RepoSnapshot_" + [System.Guid]::NewGuid().ToString())
         Write-Host "No destination provided. Using temporary folder as target: $Destination"
     }
-
+    
     # Ensure the target directory exists.
     if (-not (Test-Path -Path $Destination)) {
         try {
@@ -483,7 +581,7 @@ function Copy-GitRepoSnapshot {
             return
         }
     }
-
+    
     # Validate that the remote repository exists.
     Write-Host "Checking if repository exists at $RepositoryUrl..."
     try {
@@ -497,7 +595,7 @@ function Copy-GitRepoSnapshot {
         Write-Error "Error while checking repository: $_"
         return
     }
-
+    
     # Validate that the specified branch exists in the remote repository.
     Write-Host "Checking if branch '$BranchName' exists in the repository..."
     try {
@@ -511,7 +609,7 @@ function Copy-GitRepoSnapshot {
         Write-Error "Error while checking branch: $_"
         return
     }
-
+    
     # Create a temporary folder for the snapshot clone.
     $tempPath = [System.IO.Path]::GetTempPath()
     $tempSnapshotDir = Join-Path -Path $tempPath -ChildPath ("RepoSnapshot_" + [System.Guid]::NewGuid().ToString())
@@ -522,7 +620,7 @@ function Copy-GitRepoSnapshot {
         Write-Error "Failed to create temporary snapshot folder '$tempSnapshotDir': $_"
         return
     }
-
+    
     # Clone the repository snapshot into the temporary folder.
     Write-Host "Cloning branch '$BranchName' from repository '$RepositoryUrl' into temporary folder..."
     git clone --depth 1 -b $BranchName $RepositoryUrl $tempSnapshotDir
@@ -530,7 +628,20 @@ function Copy-GitRepoSnapshot {
         Write-Error "Git clone operation failed."
         return
     }
-
+    
+    # Restore original file timestamps from git commit dates.
+    Restore-GitFileTimes -RepoDir $tempSnapshotDir
+    
+    # Determine the source directory to copy.
+    $sourceToCopy = $tempSnapshotDir
+    if (-not [string]::IsNullOrWhiteSpace($Subfolder)) {
+        $sourceToCopy = Join-Path -Path $tempSnapshotDir -ChildPath $Subfolder
+        if (-not (Test-Path -Path $sourceToCopy)) {
+            Write-Error "Specified subfolder '$Subfolder' does not exist in the cloned repository."
+            return
+        }
+    }
+    
     # Remove the .git folder from the temporary snapshot to eliminate Git versioning.
     $gitFolder = Join-Path -Path $tempSnapshotDir -ChildPath ".git"
     if (Test-Path -Path $gitFolder) {
@@ -546,28 +657,9 @@ function Copy-GitRepoSnapshot {
     else {
         Write-Warning ".git folder not found in temporary snapshot."
     }
-
-    # Derive a safe repository name from the RepositoryUrl.
-    try {
-        $repoName = Get-SafeDirectoryNameFromUrl -RepositoryUrl $RepositoryUrl
-        if ([string]::IsNullOrWhiteSpace($repoName)) {
-            throw "Repository name could not be determined from URL."
-        }
-        $finalDestination = Join-Path -Path $Destination -ChildPath $repoName
-
-        # Ensure the final destination directory exists.
-        if (-not (Test-Path -Path $finalDestination)) {
-            New-Item -Path $finalDestination -ItemType Directory -Force | Out-Null
-        }
-    }
-    catch {
-        Write-Error "Error determining repository name: $_"
-        return
-    }
-
-    # Use the helper function to mirror the snapshot.
-    Mirror-DirectorySnapshot -Source $tempSnapshotDir -Destination $finalDestination
-
+    
+    Mirror-DirectorySnapshot -Source $sourceToCopy -Destination $Destination -RetryCount 5 -RetryDelay 3000 -PurgeExtraFiles $true
+    
     # Clean up the temporary snapshot folder.
     Write-Host "Cleaning up temporary snapshot folder..."
     try {
@@ -578,6 +670,7 @@ function Copy-GitRepoSnapshot {
         Write-Warning "Failed to remove temporary folder '$tempSnapshotDir': $_"
     }
 }
+
 
 function Get-RemoteRepoFileInfo {
     <#
@@ -892,7 +985,6 @@ function Compare-LocalRemoteFileTimestamps {
     }
 }
 
-
 function Copy-DirectorySnapshot {
     <#
     .SYNOPSIS
@@ -1064,3 +1156,16 @@ function Sync-RemoteRepoFiles {
         Write-Error "An error occurred during synchronization: $_"
     }
 }
+
+
+
+
+
+
+#Copy-GitRepoSnapshot -RepositoryUrl "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command" -Destination "C:\temp\aaaBlackBytesBox.Manifested.GitX"
+
+
+#Sync-RemoteRepoFiles3 -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command" -LocalDestination "C:\temp\xBlackBytesBox.Manifested.GitX"
+#Sync-RemoteRepoFiles3 -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command"
+#Sync-RemoteRepoFiles3 /?
+#$x=1
