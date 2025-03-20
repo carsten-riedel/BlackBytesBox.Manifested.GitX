@@ -22,7 +22,6 @@ A PowerShell module for retrieving and comparing essential Git repository inform
 - **Git** must be installed and available in your system's PATH.
 - **PowerShell** version 5.0 or higher (recommended) to support module manifest features and advanced scripting capabilities.
 
-
 ## Examples
 
 Retrieve basic repository information:

@@ -988,12 +988,13 @@ function Compare-LocalRemoteFileTimestamps {
 function Copy-DirectorySnapshot {
     <#
     .SYNOPSIS
-        Copies a directory snapshot from a source to a destination with optional overwrite and retry logic.
+        Copies a directory snapshot from a source to a destination with optional overwrite, retry, and purge logic.
 
     .DESCRIPTION
         This function copies all files from the source directory to the destination directory while preserving the folder structure.
         If a destination file already exists, the function will either overwrite it when the -Overwrite switch is provided or skip copying and issue a warning.
         You can also specify how many retry attempts should be made and the delay between retries in case of a failure.
+        When the -PurgeExtraFiles switch is used, the function will remove any extra files and directories in the destination that do not exist in the source.
 
     .PARAMETER Source
         The full path of the source directory.
@@ -1010,9 +1011,12 @@ function Copy-DirectorySnapshot {
     .PARAMETER Overwrite
         When set, existing files in the destination will be overwritten. If omitted, existing files are skipped and a warning is issued.
 
+    .PARAMETER PurgeExtraFiles
+        When set, extra files and directories in the destination that are not present in the source will be removed.
+
     .EXAMPLE
-        Copy-DirectorySnapshot -Source "C:\SourceDir" -Destination "C:\DestDir" -RetryCount 3 -RetryDelay 2000 -Overwrite
-        # This copies files from C:\SourceDir to C:\DestDir, overwriting existing files, with up to 3 retries and a 2000ms delay between attempts.
+        Copy-DirectorySnapshot -Source "C:\SourceDir" -Destination "C:\DestDir" -RetryCount 3 -RetryDelay 2000 -Overwrite -PurgeExtraFiles
+        # This copies files from C:\SourceDir to C:\DestDir, overwriting existing files, purging extra files/dirs, with up to 3 retries and a 2000ms delay between attempts.
 
     .EXAMPLE
         Copy-DirectorySnapshot -Source "C:\SourceDir" -Destination "C:\DestDir"
@@ -1030,7 +1034,9 @@ function Copy-DirectorySnapshot {
 
         [int]$RetryDelay = 3000,
 
-        [switch]$Overwrite
+        [switch]$Overwrite,
+
+        [switch]$PurgeExtraFiles
     )
 
     # Check if source exists.
@@ -1046,11 +1052,11 @@ function Copy-DirectorySnapshot {
     }
 
     # Retrieve all files recursively from the source.
-    $files = Get-ChildItem -Path $Source -Recurse -File
+    $sourceFiles = Get-ChildItem -Path $Source -Recurse -File
 
-    foreach ($file in $files) {
+    foreach ($file in $sourceFiles) {
         # Determine the file's relative path and corresponding destination path.
-        $relativePath = $file.FullName.Substring($Source.Length)
+        $relativePath = $file.FullName.Substring($Source.Length).TrimStart('\')
         $destFile = Join-Path -Path $Destination -ChildPath $relativePath
 
         # Ensure the destination directory for this file exists.
@@ -1093,7 +1099,55 @@ function Copy-DirectorySnapshot {
             }
         }
     }
+
+    # Purge extra files and directories in destination if requested.
+    if ($PurgeExtraFiles) {
+        Write-Verbose "Purging extra files and directories from destination '$Destination'."
+
+        # Build a set of relative file paths that exist in the source.
+        $sourceRelativeFiles = $sourceFiles | ForEach-Object {
+            $_.FullName.Substring($Source.Length).TrimStart('\')
+        }
+
+        # Remove extra files in destination.
+        $destFiles = Get-ChildItem -Path $Destination -Recurse -File
+        foreach ($destFile in $destFiles) {
+            $relativePath = $destFile.FullName.Substring($Destination.Length).TrimStart('\')
+            if ($sourceRelativeFiles -notcontains $relativePath) {
+                try {
+                    Remove-Item -Path $destFile.FullName -Force -ErrorAction Stop
+                    Write-Output "Removed extra file '$($destFile.FullName)'."
+                }
+                catch {
+                    Write-Warning "Failed to remove extra file '$($destFile.FullName)'. Error: $_"
+                }
+            }
+        }
+
+        # Build a set of relative directory paths that exist in the source.
+        $sourceDirs = Get-ChildItem -Path $Source -Recurse -Directory | ForEach-Object {
+            $_.FullName.Substring($Source.Length).TrimStart('\')
+        }
+
+        # Remove extra directories in destination that are not present in the source.
+        # Sorting in descending order ensures deeper directories are removed first.
+        $destDirs = Get-ChildItem -Path $Destination -Recurse -Directory |
+                    Sort-Object { $_.FullName.Split('\').Count } -Descending
+        foreach ($destDir in $destDirs) {
+            $relativePath = $destDir.FullName.Substring($Destination.Length).TrimStart('\')
+            if ($sourceDirs -notcontains $relativePath) {
+                try {
+                    Remove-Item -Path $destDir.FullName -Force -Recurse -ErrorAction Stop
+                    Write-Output "Removed extra directory '$($destDir.FullName)'."
+                }
+                catch {
+                    Write-Warning "Failed to remove extra directory '$($destDir.FullName)'. Error: $_"
+                }
+            }
+        }
+    }
 }
+
 
 function Sync-RemoteRepoFiles {
     <#
@@ -1157,12 +1211,124 @@ function Sync-RemoteRepoFiles {
     }
 }
 
+function Sync-RemoteRepoFiles2 {
+    <#
+    .SYNOPSIS
+        Synchronizes files from a remote Git repository to a local destination.
+
+    .DESCRIPTION
+        This function performs the following steps:
+          1. Retrieves commit and file information from a remote Git repository.
+          2. Compares remote file timestamps with those in a specified local destination.
+          3. Performs a sparse checkout of the remote repository for files that are newer than the local copies.
+          4. Copies the checked-out files to the local destination with an option to overwrite existing files.
+          5. When the -PurgeExtraFiles switch is set, extra files and directories in the local destination that do not exist in the remote repository (based on $remoteFileInfo.Files) are purged.
+
+    .PARAMETER RemoteRepo
+        The URL of the remote Git repository.
+
+    .PARAMETER BranchName
+        The branch to operate on.
+
+    .PARAMETER LocalDestination
+        The local directory that serves as the destination for file comparison and copy.
+
+    .PARAMETER PurgeExtraFiles
+        When set, extra files and directories in the local destination that are not present in the remote repository will be removed.
+
+    .EXAMPLE
+        Sync-RemoteRepoFiles2 -RemoteRepo "https://github.com/example/repo.git" -BranchName "feature/command" -LocalDestination "C:\temp\Repo" -PurgeExtraFiles
+        # This synchronizes the remote repository to the local destination, overwriting outdated files and purging extra files and directories.
+    #>
+    [CmdletBinding()]
+    [alias("srrf")]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RemoteRepo,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$BranchName,
+        
+        [Parameter(Mandatory = $true)]
+        [string]$LocalDestination,
+        
+        [switch]$PurgeExtraFiles
+    )
+    
+    try {
+        Write-Verbose "Retrieving remote repository file information..."
+        $remoteFileInfo = Get-RemoteRepoFileInfo -RemoteRepo $RemoteRepo -BranchName $BranchName
+       
+        if (-not $remoteFileInfo.Files -or $remoteFileInfo.Files.Count -eq 0) {
+            Write-Verbose "No remote files to sync."
+            return
+        }
+
+        Write-Verbose "Comparing local files with remote file timestamps..."
+        $timeCompareResult = Compare-LocalRemoteFileTimestamps -Files $remoteFileInfo.Files -CompareDestination $LocalDestination
+
+        if (-not $timeCompareResult.RemoteNewer -or $remoteFileInfo.RemoteNewer.Count -eq 0) {
+            Write-Verbose "No remote files to sync."
+            return
+        }
+        
+        Write-Verbose "Performing sparse checkout for files with newer remote versions..."
+        $clonedFiles = Get-RemoteRepoFiles -RemoteRepo $remoteFileInfo.RemoteRepo -BranchName $remoteFileInfo.BranchName -Files $timeCompareResult.RemoteNewer
+        
+        Write-Verbose "Copying updated files to local destination..."
+        # Copy updated files from the sparse checkout location to the local destination.
+        Copy-Item -Path (Join-Path $clonedFiles.LocalPath '*') -Destination $LocalDestination -Recurse -Force -ErrorAction Stop
+
+        # Purge extra files based on $remoteFileInfo.Files if the switch is set.
+        if ($PurgeExtraFiles) {
+            Write-Verbose "Purging extra files from local destination based on remote repository file list..."
+            # Assuming each file object in $remoteFileInfo.Files has a property 'Path' representing its relative path.
+            $remoteRelativePaths = $remoteFileInfo.Files | ForEach-Object { $_.Path }
+            
+            # Purge extra files.
+            $localFiles = Get-ChildItem -Path $LocalDestination -Recurse -File
+            foreach ($localFile in $localFiles) {
+                $localRelativePath = $localFile.FullName.Substring($LocalDestination.Length).TrimStart('\')
+                if ($remoteRelativePaths -notcontains $localRelativePath) {
+                    try {
+                        Remove-Item -Path $localFile.FullName -Force -ErrorAction Stop
+                        Write-Output "Removed extra file '$($localFile.FullName)'."
+                    }
+                    catch {
+                        Write-Warning "Failed to remove extra file '$($localFile.FullName)'. Error: $_"
+                    }
+                }
+            }
+            
+            Write-Verbose "Purging extra directories from local destination..."
+            # Remove extra directories that are now empty.
+            $localDirs = Get-ChildItem -Path $LocalDestination -Recurse -Directory |
+                         Sort-Object { $_.FullName.Split('\').Count } -Descending
+            foreach ($dir in $localDirs) {
+                if (-not (Get-ChildItem -Path $dir.FullName)) {
+                    try {
+                        Remove-Item -Path $dir.FullName -Force -Recurse -ErrorAction Stop
+                        Write-Output "Removed extra directory '$($dir.FullName)'."
+                    }
+                    catch {
+                        Write-Warning "Failed to remove extra directory '$($dir.FullName)'. Error: $_"
+                    }
+                }
+            }
+        }
+        
+        Write-Output "Sync complete."
+    }
+    catch {
+        Write-Error "An error occurred during synchronization: $_"
+    }
+}
 
 
 
 
 
-#Copy-GitRepoSnapshot -RepositoryUrl "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command" -Destination "C:\temp\aaaBlackBytesBox.Manifested.GitX"
+Sync-RemoteRepoFiles2 -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command" -LocalDestination "C:\temp\baaasource" -PurgeExtraFiles
 
 
 #Sync-RemoteRepoFiles3 -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command" -LocalDestination "C:\temp\xBlackBytesBox.Manifested.GitX"
