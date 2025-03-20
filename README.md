@@ -30,7 +30,10 @@ $result = Get-GitCurrentBranch
 $result = Get-GitTopLevelDirectory
 $result = Get-GitRepositoryName
 $result = Get-RemoteCommitId -BranchName "main"
+
 Sync-RemoteRepoFiles -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "main" -LocalDestination "C:\temp\BlackBytesBox.Manifested.GitX"
+
 $nfo = Get-RemoteRepoFileInfo -BranchName "main" -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX.git"
 $nfo.Files = Compare-LocalRemoteFileTimestamps -Files $nfo.Files -CompareDestination "C:\temp\test\BlackBytesBox.Manifested.GitX"
 $files = Get-RemoteRepoFiles -BranchName $nfo.BranchName -RemoteRepo $nfo.RemoteRepo -Files $nfo.Files.RemoteNewer
+```
