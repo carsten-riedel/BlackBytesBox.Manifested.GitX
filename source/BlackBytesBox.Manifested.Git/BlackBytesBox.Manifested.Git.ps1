@@ -1476,20 +1476,18 @@ function Get-GitRepoFileMetadata {
         (e.g., 'resolve' or 'raw/refs/heads'). If omitted or empty, DownloadUrl for each file
         will be an empty string.
 
-    .EXAMPLE
-        # Without download endpoint
-        $info = Get-GitRepoFileMetadata \
-            -RepoUrl "https://huggingface.co/microsoft/phi-4" \
-            -BranchName "main"
-        # $info.Files['README.md'].DownloadUrl -> ""
+    .PARAMETER Filter
+        (Optional) An array of wildcard patterns. Any file whose path matches *any* of these
+        patterns will be **excluded** from the result set.
+        Wildcards follow PowerShell’s `-like` semantics; for example:
+        `-Filter 'onnx/*','filename*root.json'`
 
     .EXAMPLE
-        # With download endpoint
-        $info = Get-GitRepoFileMetadata \
-            -RepoUrl "https://huggingface.co/microsoft/phi-4" \
-            -BranchName "main" \
-            -DownloadEndpoint "resolve"
-        # $info.Files['README.md'].DownloadUrl -> https://huggingface.co/microsoft/phi-4/resolve/main/README.md
+        # Exclude all files in the 'onnx' directory and any JSON ending in 'root.json'
+        $info = Get-GitRepoFileMetadata `
+            -RepoUrl "https://huggingface.co/microsoft/phi-4" `
+            -BranchName "main" `
+            -Filter 'onnx/*','*root.json'
 
     .OUTPUTS
         PSCustomObject with properties:
@@ -1510,7 +1508,10 @@ function Get-GitRepoFileMetadata {
         [string]$BranchName,
 
         [Parameter()]
-        [string]$DownloadEndpoint
+        [string]$DownloadEndpoint,
+
+        [Parameter()]
+        [string[]]$Filter
     )
 
     # Prepare partial clone directory
@@ -1521,14 +1522,26 @@ function Get-GitRepoFileMetadata {
         git clone --filter=blob:none --no-checkout -b $BranchName $RepoUrl $tempDir | Out-Null
         Push-Location $tempDir
 
-        $files = git ls-tree -r HEAD --name-only | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
+        # List all files
+        $files = git ls-tree -r HEAD --name-only | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+
+        # If a filter was provided, drop any matching path
+        if ($PSBoundParameters.ContainsKey('Filter') -and $Filter) {
+            $files = $files | Where-Object {
+                $path = $_
+                # exclude if ANY pattern matches
+                -not ($Filter | ForEach-Object { $path -like $_ } | Where-Object { $_ })
+            }
+        }
+
         $fileData = @{}
 
         foreach ($file in $files) {
+            # Get last commit date and message for this file
             $commit = git log -1 --pretty=format:"%ad|%s" --date=iso-strict -- $file
             if ($commit) {
                 $parts = $commit -split '\|',2
-                try { $ts = [DateTimeOffset]::Parse($parts[0]).UtcDateTime } catch { $ts = $null }
+                try { $ts  = [DateTimeOffset]::Parse($parts[0]).UtcDateTime } catch { $ts = $null }
                 $msg = if ($parts.Length -gt 1) { $parts[1] } else { '' }
             } else {
                 $ts  = $null
@@ -1552,11 +1565,11 @@ function Get-GitRepoFileMetadata {
             }
         }
 
-        # Construct result
+        # Construct and return the result object
         $result = [ordered]@{
-            RepoUrl        = $RepoUrl
-            BranchName     = $BranchName
-            Files          = $fileData
+            RepoUrl    = $RepoUrl
+            BranchName = $BranchName
+            Files      = $fileData
         }
         if ($PSBoundParameters.ContainsKey('DownloadEndpoint') -and $DownloadEndpoint) {
             $result.DownloadEndpoint = $DownloadEndpoint
@@ -1679,16 +1692,14 @@ function Sync-GitRepoFiles {
 
 
 
-# PSScriptAnalyzer disable PSUseApprovedVerbs
-
 function Mirror-GitRepoWithDownloadContent {
     <#
     .SYNOPSIS
         Retrieves metadata and mirrors a Git repository with download content in one step.
 
     .DESCRIPTION
-        Combines Get-GitRepoFileMetadata and Sync-GitRepoFiles into a single command. Requires
-        RepoUrl, BranchName, DownloadEndpoint, and DestinationRoot.
+        Combines Get-GitRepoFileMetadata and Sync-GitRepoFiles into a single command.
+        Accepts an optional -Filter parameter to exclude files by wildcard patterns.
 
     .PARAMETER RepoUrl
         The URL of the remote Git repository.
@@ -1702,12 +1713,18 @@ function Mirror-GitRepoWithDownloadContent {
     .PARAMETER DestinationRoot
         The local root folder to mirror content into (e.g., "C:\temp\test").
 
+    .PARAMETER Filter
+        (Optional) An array of wildcard patterns to exclude from metadata retrieval.
+        Forwarded to Get-GitRepoFileMetadata’s -Filter parameter.
+
     .EXAMPLE
-        Mirror-GitRepoWithDownloadContent \
-          -RepoUrl "https://huggingface.co/microsoft/phi-4" \
-          -BranchName "main" \
-          -DownloadEndpoint "resolve" \
-          -DestinationRoot "C:\temp\test"
+        # Mirror everything except 'onnx/*' and '*root.json'
+        Mirror-GitRepoWithDownloadContent `
+          -RepoUrl "https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct" `
+          -BranchName "main" `
+          -DownloadEndpoint "resolve" `
+          -DestinationRoot "C:\temp\test" `
+          -Filter 'onnx/*','runs/*'
     #>
     [Diagnostics.CodeAnalysis.SuppressMessage("PSUseApprovedVerbs","")]
     [CmdletBinding()]
@@ -1716,10 +1733,22 @@ function Mirror-GitRepoWithDownloadContent {
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$RepoUrl,
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$BranchName,
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$DownloadEndpoint,
-        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$DestinationRoot
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$DestinationRoot,
+        [Parameter()][string[]]$Filter
     )
 
-    $metadata = Get-GitRepoFileMetadata -RepoUrl $RepoUrl -BranchName $BranchName -DownloadEndpoint $DownloadEndpoint
+    # Build parameter splat for metadata retrieval
+    $metaParams = @{
+        RepoUrl        = $RepoUrl
+        BranchName     = $BranchName
+        DownloadEndpoint = $DownloadEndpoint
+    }
+    if ($PSBoundParameters.ContainsKey('Filter')) {
+        $metaParams.Filter = $Filter
+    }
+
+    # Retrieve metadata (with optional filtering) and sync files
+    $metadata = Get-GitRepoFileMetadata @metaParams
     Sync-GitRepoFiles -Metadata $metadata -DestinationRoot $DestinationRoot
 }
 
