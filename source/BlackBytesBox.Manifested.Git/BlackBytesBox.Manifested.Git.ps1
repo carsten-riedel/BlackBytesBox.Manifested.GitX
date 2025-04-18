@@ -1454,9 +1454,260 @@ function Get-GitHubLatestRelease {
     return $results
 }
 
+function Get-GitRepoFileMetadata {
+    <#
+    .SYNOPSIS
+        Retrieves commit metadata for files in a Git repository and optionally constructs download URLs.
+
+    .DESCRIPTION
+        This function accepts a repository URL, branch name, and an optional download endpoint.
+        It performs a partial clone (metadata only) to list files at the HEAD commit, retrieves each
+        file's latest commit timestamp and message, and—if specified—generates a direct file
+        download URL by injecting the endpoint segment.
+
+    .PARAMETER RepoUrl
+        The HTTP(S) URL of the remote Git repository (e.g., "https://huggingface.co/microsoft/phi-4").
+
+    .PARAMETER BranchName
+        The branch to inspect (e.g., "main").
+
+    .PARAMETER DownloadEndpoint
+        (Optional) The URL path segment to insert before the branch name for download links
+        (e.g., 'resolve' or 'raw/refs/heads'). If omitted or empty, DownloadUrl for each file
+        will be an empty string.
+
+    .EXAMPLE
+        # Without download endpoint
+        $info = Get-GitRepoFileMetadata \
+            -RepoUrl "https://huggingface.co/microsoft/phi-4" \
+            -BranchName "main"
+        # $info.Files['README.md'].DownloadUrl -> ""
+
+    .EXAMPLE
+        # With download endpoint
+        $info = Get-GitRepoFileMetadata \
+            -RepoUrl "https://huggingface.co/microsoft/phi-4" \
+            -BranchName "main" \
+            -DownloadEndpoint "resolve"
+        # $info.Files['README.md'].DownloadUrl -> https://huggingface.co/microsoft/phi-4/resolve/main/README.md
+
+    .OUTPUTS
+        PSCustomObject with properties:
+        - RepoUrl (string)
+        - BranchName (string)
+        - DownloadEndpoint (string, optional)
+        - Files (hashtable of PSCustomObject with Filename, Timestamp, Comment, DownloadUrl)
+    #>
+    [CmdletBinding()]
+    [alias('ggrfm')]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$RepoUrl,
+
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$BranchName,
+
+        [Parameter()]
+        [string]$DownloadEndpoint
+    )
+
+    # Prepare partial clone directory
+    $tempDir = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ([Guid]::NewGuid().ToString())
+    New-Item -ItemType Directory -Path $tempDir | Out-Null
+
+    try {
+        git clone --filter=blob:none --no-checkout -b $BranchName $RepoUrl $tempDir | Out-Null
+        Push-Location $tempDir
+
+        $files = git ls-tree -r HEAD --name-only | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() }
+        $fileData = @{}
+
+        foreach ($file in $files) {
+            $commit = git log -1 --pretty=format:"%ad|%s" --date=iso-strict -- $file
+            if ($commit) {
+                $parts = $commit -split '\|',2
+                try { $ts = [DateTimeOffset]::Parse($parts[0]).UtcDateTime } catch { $ts = $null }
+                $msg = if ($parts.Length -gt 1) { $parts[1] } else { '' }
+            } else {
+                $ts  = $null
+                $msg = ''
+            }
+
+            # Build download URL if endpoint given
+            if ($PSBoundParameters.ContainsKey('DownloadEndpoint') -and $DownloadEndpoint) {
+                $endpoint = $DownloadEndpoint.Trim('/')
+                $base     = $RepoUrl.TrimEnd('/')
+                $url      = "${base}/${endpoint}/${BranchName}/${file}"
+            } else {
+                $url = ''
+            }
+
+            $fileData[$file] = [PSCustomObject]@{
+                Filename    = $file
+                Timestamp   = $ts
+                Comment     = $msg
+                DownloadUrl = $url
+            }
+        }
+
+        # Construct result
+        $result = [ordered]@{
+            RepoUrl        = $RepoUrl
+            BranchName     = $BranchName
+            Files          = $fileData
+        }
+        if ($PSBoundParameters.ContainsKey('DownloadEndpoint') -and $DownloadEndpoint) {
+            $result.DownloadEndpoint = $DownloadEndpoint
+        }
+
+        return [PSCustomObject]$result
+    }
+    catch {
+        Write-Error "Error retrieving metadata: $_"
+    }
+    finally {
+        Pop-Location
+        Remove-Item -Path $tempDir -Recurse -Force
+    }
+}
+
+function Sync-GitRepoFiles {
+    <#
+    .SYNOPSIS
+        Mirrors files from a GitRepoFileMetadata object to a local folder based on DownloadUrl, showing progress.
+
+    .DESCRIPTION
+        Takes metadata from Get-GitRepoFileMetadata and a destination root. It first removes any files
+        in the local target that are not present in the metadata (cleanup), then downloads/updates
+        files whose DownloadUrl is defined based on timestamp equality, sets file timestamps after download,
+        and finally reports completion.
+
+    .PARAMETER Metadata
+        PSCustomObject returned by Get-GitRepoFileMetadata.
+
+    .PARAMETER DestinationRoot
+        The root directory under which to sync files (e.g., "C:\Downloads").
+
+    .OUTPUTS
+        None. Writes progress to the host.
+    #>
+    [CmdletBinding()]
+    [alias('sgrf')]
+    param(
+        [Parameter(Mandatory)][ValidateNotNull()][PSCustomObject]$Metadata,
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$DestinationRoot
+    )
+
+    Write-Host "Starting sync for: $($Metadata.RepoUrl)"
+    $uri = [Uri]$Metadata.RepoUrl
+    $repoPath = $uri.AbsolutePath.Trim('/')
+    $targetDir = Join-Path $DestinationRoot $repoPath
+    if (-not (Test-Path $targetDir)) {
+        New-Item -Path $targetDir -ItemType Directory -Force | Out-Null
+    }
+    Write-Host "Destination: $targetDir`n"
+
+    # Initial cleanup: remove any files not in metadata
+    Write-Host "Performing initial cleanup of extraneous files..."
+    $expected = $Metadata.Files.Keys | ForEach-Object { Join-Path $targetDir $_ }
+    Get-ChildItem -Path $targetDir -Recurse -File | ForEach-Object {
+        if ($expected -notcontains $_.FullName) {
+            Write-Host "Removing extra file: $($_.FullName)"
+            Remove-Item -Path $_.FullName -Force
+        }
+    }
+    Write-Host "Initial cleanup complete.`n"
+
+    # Download/update files based on timestamp
+    $desired = [System.Collections.Generic.List[string]]::new()
+    foreach ($kv in $Metadata.Files.GetEnumerator()) {
+        $fileName = $kv.Key; $info = $kv.Value
+        if ([string]::IsNullOrEmpty($info.DownloadUrl)) {
+            Write-Host "Skipping (no URL): $fileName"
+            continue
+        }
+        $localPath = Join-Path $targetDir $fileName
+        $destDir = Split-Path $localPath -Parent
+        if (-not (Test-Path $destDir)) {
+            New-Item -Path $destDir -ItemType Directory -Force | Out-Null
+        }
+
+        $download = $true
+        if (Test-Path $localPath) {
+            $localTime = (Get-Item $localPath).LastWriteTimeUtc
+            if ($localTime -eq $info.Timestamp) {
+                Write-Host "Timestamps match, skipping: $fileName"
+                $download = $false
+            } else {
+                Write-Host "Timestamp mismatch, will (re)download: $fileName"
+            }
+        } else {
+            Write-Host "Out-of-date, will re-download: $fileName"
+        }
+
+        if ($download) {
+            Write-Host "Downloading: $fileName"
+            Invoke-WebRequest -Uri $info.DownloadUrl -OutFile $localPath -UseBasicParsing
+            [System.IO.File]::SetLastWriteTimeUtc($localPath, $info.Timestamp)
+            Write-Host "Downloaded and timestamp set: $fileName`n"
+        }
+
+        $desired.Add((Get-Item $localPath).FullName)
+    }
+
+    Write-Host "Sync complete for: $($Metadata.RepoUrl)"
+}
+
+# PSScriptAnalyzer disable PSUseApprovedVerbs
+
+function Mirror-GitRepoWithDownloadContent {
+    <#
+    .SYNOPSIS
+        Retrieves metadata and mirrors a Git repository with download content in one step.
+
+    .DESCRIPTION
+        Combines Get-GitRepoFileMetadata and Sync-GitRepoFiles into a single command. Requires
+        RepoUrl, BranchName, DownloadEndpoint, and DestinationRoot.
+
+    .PARAMETER RepoUrl
+        The URL of the remote Git repository.
+
+    .PARAMETER BranchName
+        The branch to sync (e.g., "main").
+
+    .PARAMETER DownloadEndpoint
+        The endpoint for download URLs (e.g., 'resolve').
+
+    .PARAMETER DestinationRoot
+        The local root folder to mirror content into (e.g., "C:\temp\test").
+
+    .EXAMPLE
+        Mirror-GitRepoWithDownloadContent \
+          -RepoUrl "https://huggingface.co/microsoft/phi-4" \
+          -BranchName "main" \
+          -DownloadEndpoint "resolve" \
+          -DestinationRoot "C:\temp\test"
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessage("PSUseApprovedVerbs","")]
+    [CmdletBinding()]
+    [alias('mirror-grwdc')]
+    param(
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$RepoUrl,
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$BranchName,
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$DownloadEndpoint,
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$DestinationRoot
+    )
+
+    $metadata = Get-GitRepoFileMetadata -RepoUrl $RepoUrl -BranchName $BranchName -DownloadEndpoint $DownloadEndpoint
+    Sync-GitRepoFiles -Metadata $metadata -DestinationRoot $DestinationRoot
+}
 
 
 
+#Mirror-GitRepoWithDownloadContent -RepoUrl "https://huggingface.co/microsoft/Phi-4-mini-instruct" -BranchName "main" -DownloadEndpoint "resolve" -DestinationRoot "C:\temp\test"
+#Mirror-GitRepoWithDownloadContent -RepoUrl "https://huggingface.co/microsoft/phi-4" -BranchName "main" -DownloadEndpoint "resolve" -DestinationRoot "C:\temp\test"
 
 #Sync-RemoteRepoFiles2 -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "main" -LocalDestination "C:\temp\abaaasource" -PurgeExtraFiles
 #Sync-RemoteRepoFiles3 -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "feature/command" -LocalDestination "C:\temp\xBlackBytesBox.Manifested.GitX"
