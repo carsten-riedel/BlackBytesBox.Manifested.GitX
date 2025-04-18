@@ -1580,9 +1580,9 @@ function Sync-GitRepoFiles {
 
     .DESCRIPTION
         Takes metadata from Get-GitRepoFileMetadata and a destination root. It first removes any files
-        in the local target that are not present in the metadata (cleanup), then downloads/updates
-        files whose DownloadUrl is defined based on timestamp equality, sets file timestamps after download,
-        and finally reports completion.
+        in the local target that are not present in the metadata (cleanup), then classifies files as:
+        "matched" (timestamps equal), "missing" (not present) or "stale" (timestamp mismatch), logs a summary,
+        processes downloads in order (missing first, then stale), and finally reports completion.
 
     .PARAMETER Metadata
         PSCustomObject returned by Get-GitRepoFileMetadata.
@@ -1591,7 +1591,7 @@ function Sync-GitRepoFiles {
         The root directory under which to sync files (e.g., "C:\Downloads").
 
     .OUTPUTS
-        None. Writes progress to the host.
+        None. Writes progress and summary to the host.
     #>
     [CmdletBinding()]
     [alias('sgrf')]
@@ -1611,17 +1611,20 @@ function Sync-GitRepoFiles {
 
     # Initial cleanup: remove any files not in metadata
     Write-Host "Performing initial cleanup of extraneous files..."
-    $expected = $Metadata.Files.Keys | ForEach-Object { Join-Path $targetDir $_ }
+    $expectedPaths = $Metadata.Files.Keys | ForEach-Object { Join-Path $targetDir $_ }
     Get-ChildItem -Path $targetDir -Recurse -File | ForEach-Object {
-        if ($expected -notcontains $_.FullName) {
+        if ($expectedPaths -notcontains $_.FullName) {
             Write-Host "Removing extra file: $($_.FullName)"
             Remove-Item -Path $_.FullName -Force
         }
     }
     Write-Host "Initial cleanup complete.`n"
 
-    # Download/update files based on timestamp
-    $desired = [System.Collections.Generic.List[string]]::new()
+    # Classification phase
+    $missing = New-Object System.Collections.Generic.List[string]
+    $stale   = New-Object System.Collections.Generic.List[string]
+    $matched = New-Object System.Collections.Generic.List[string]
+
     foreach ($kv in $Metadata.Files.GetEnumerator()) {
         $fileName = $kv.Key; $info = $kv.Value
         if ([string]::IsNullOrEmpty($info.DownloadUrl)) {
@@ -1629,36 +1632,52 @@ function Sync-GitRepoFiles {
             continue
         }
         $localPath = Join-Path $targetDir $fileName
-        $destDir = Split-Path $localPath -Parent
-        if (-not (Test-Path $destDir)) {
-            New-Item -Path $destDir -ItemType Directory -Force | Out-Null
-        }
-
-        $download = $true
-        if (Test-Path $localPath) {
+        if (-not (Test-Path $localPath)) {
+            $missing.Add($fileName)
+        } else {
             $localTime = (Get-Item $localPath).LastWriteTimeUtc
             if ($localTime -eq $info.Timestamp) {
-                Write-Host "Timestamps match, skipping: $fileName"
-                $download = $false
+                $matched.Add($fileName)
             } else {
-                Write-Host "Timestamp mismatch, will (re)download: $fileName"
+                $stale.Add($fileName)
             }
-        } else {
-            Write-Host "Out-of-date, will re-download: $fileName"
         }
+    }
 
-        if ($download) {
-            Write-Host "Downloading: $fileName"
-            Invoke-WebRequest -Uri $info.DownloadUrl -OutFile $localPath -UseBasicParsing
-            [System.IO.File]::SetLastWriteTimeUtc($localPath, $info.Timestamp)
-            Write-Host "Downloaded and timestamp set: $fileName`n"
-        }
+    # Summary
+    Write-Host "Summary: $($matched.Count) up-to-date, $($missing.Count) missing, $($stale.Count) stale files.`n"
 
-        $desired.Add((Get-Item $localPath).FullName)
+    # Download missing files first
+    foreach ($fileName in $missing) {
+        $info = $Metadata.Files[$fileName]
+        $localPath = Join-Path $targetDir $fileName
+        $destDir = Split-Path $localPath -Parent
+        if (-not (Test-Path $destDir)) { New-Item -Path $destDir -ItemType Directory -Force | Out-Null }
+        Write-Host "File not present, will download: $fileName"
+        Invoke-WebRequest -Uri $info.DownloadUrl -OutFile $localPath -UseBasicParsing
+        [System.IO.File]::SetLastWriteTimeUtc($localPath, $info.Timestamp)
+        Write-Host "Downloaded and timestamp set: $fileName`n"
+    }
+
+    # Then re-download stale files
+    foreach ($fileName in $stale) {
+        $info = $Metadata.Files[$fileName]
+        $localPath = Join-Path $targetDir $fileName
+        Write-Host "Out-of-date (timestamp mismatch), will re-download: $fileName"
+        Invoke-WebRequest -Uri $info.DownloadUrl -OutFile $localPath -UseBasicParsing
+        [System.IO.File]::SetLastWriteTimeUtc($localPath, $info.Timestamp)
+        Write-Host "Downloaded and timestamp set: $fileName`n"
+    }
+
+    # Finally, report matched files
+    foreach ($fileName in $matched) {
+        Write-Host "Timestamps match, skipping: $fileName"
     }
 
     Write-Host "Sync complete for: $($Metadata.RepoUrl)"
 }
+
+
 
 # PSScriptAnalyzer disable PSUseApprovedVerbs
 
@@ -1706,7 +1725,7 @@ function Mirror-GitRepoWithDownloadContent {
 
 
 
-#Mirror-GitRepoWithDownloadContent -RepoUrl "https://huggingface.co/microsoft/Phi-4-mini-instruct" -BranchName "main" -DownloadEndpoint "resolve" -DestinationRoot "C:\temp\test"
+#Mirror-GitRepoWithDownloadContent -RepoUrl "https://huggingface.co/microsoft/Phi-4-mini-instruct" -BranchName "main" -DownloadEndpoint "resolve" -DestinationRoot "C:\CustomizeAI\huggingface"
 #Mirror-GitRepoWithDownloadContent -RepoUrl "https://huggingface.co/microsoft/phi-4" -BranchName "main" -DownloadEndpoint "resolve" -DestinationRoot "C:\temp\test"
 
 #Sync-RemoteRepoFiles2 -RemoteRepo "https://github.com/carsten-riedel/BlackBytesBox.Manifested.GitX" -BranchName "main" -LocalDestination "C:\temp\abaaasource" -PurgeExtraFiles
