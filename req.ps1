@@ -54,12 +54,23 @@ catch {
 
 
 try {
-    Write-Info -Message 'Installing NuGet Package Provider...' -Color Yellow
-    Install-PackageProvider -Name NuGet -Force -MinimumVersion 2.8.5.201 -Scope CurrentUser | Out-Null
-    Write-Info -Message 'NuGet Package Provider installed successfully.' -Color Green
+    Write-Info -Message 'Checking installed NuGet Package Provider version...' -Color Yellow
+
+    # Attempt to get the installed provider
+    $provider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue |  Sort-Object Version -Descending | Select-Object -First 1
+
+    $minVersion = [Version]'2.8.5.201'
+    if (-not $provider -or [Version]$provider.Version -lt $minVersion) {
+        Write-Info -Message "Installing/Updating NuGet Package Provider to at least version $minVersion..." -Color Yellow
+        Install-PackageProvider -Name NuGet -Force -MinimumVersion $minVersion -Scope CurrentUser | Out-Null
+        Write-Info -Message 'NuGet Package Provider installed/updated successfully.' -Color Green
+    }
+    else {
+        Write-Info -Message "NuGet Package Provider version $($provider.Version) is already >= $minVersion. No action needed." -Color Green
+    }
 }
 catch {
-    Write-Info -Message "ERROR: Failed to install NuGet Package Provider. $_" -Color Red
+    Write-Info -Message "ERROR: Failed to install or verify NuGet Package Provider. $_" -Color Red
     exit 1
 }
 
