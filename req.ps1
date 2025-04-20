@@ -149,37 +149,38 @@ if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
     $downloadFolder = Join-Path $env:LocalAppData 'Programs\Git'
 
     # Invoke the release‑downloader for MinGit x64 (excluding busybox builds)
-    $result = Get-GitHubLatestRelease `
-        -RepoUrl 'https://github.com/git-for-windows/git' `
-        -Whitelist '*MinGit*','*64-bit*' `
-        -Blacklist '*busy*' `
-        -IncludeVersionFolder `
-        -Extract `
-        -DownloadFolder $downloadFolder
+    $result = Get-GitHubLatestRelease -RepoUrl 'https://github.com/git-for-windows/git' -Whitelist '*MinGit*','*64-bit*' -Blacklist '*busy*' -IncludeVersionFolder  -Extract -DownloadFolder $downloadFolder
 
-    # Grab the extracted directory from the result
-    $minGitPath = ($result | Select-Object -ExpandProperty Path | Select-Object -First 1)
+    # Determine the MinGit root folder (subfolder named like "MinGit-2.49.0-64-bit")
+    $minGitRoot = ($result | Select-Object -ExpandProperty Path | Select-Object -First 1)
+
+    # Prefer mingw64\bin, else fall back to cmd
+    $gitBin = Join-Path $minGitRoot 'mingw64\bin'
+    if (-not (Test-Path $gitBin)) {
+        $gitBin = Join-Path $minGitRoot 'cmd'
+    }
 
     # Add to current session PATH if not already present
-    if ($env:Path -notlike "*$minGitPath*") {
-        $env:Path = "$minGitPath;$env:Path"
-        Write-Host "$(Get-Date -Format 'HH:mm:ss')  Added $minGitPath to current session PATH."
+    if ($env:Path -notlike "*$gitBin*") {
+        $env:Path = "$gitBin;$env:Path"
+        Write-Info "$(Get-Date -Format 'HH:mm:ss')  Added $gitBin to current session PATH."
     }
 
     # Persist to user profile PATH
     $currentUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    if ($currentUserPath -notlike "*$minGitPath*") {
-        $newUserPath = "$minGitPath;$currentUserPath"
+    if ($currentUserPath -notlike "*$gitBin*") {
+        $newUserPath = "$gitBin;$currentUserPath"
         [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
-        Write-Host "$(Get-Date -Format 'HH:mm:ss')  Persisted $minGitPath to user PATH."
+        Write-Info "$(Get-Date -Format 'HH:mm:ss')  Persisted $gitBin to user PATH."
     }
 
-    Write-Host "$(Get-Date -Format 'HH:mm:ss')  MinGit has been downloaded to $downloadFolder."
+    Write-Info "$(Get-Date -Format 'HH:mm:ss')  MinGit has been downloaded and configured."
 }
 else {
     $gitPath = (Get-Command git.exe).Source
-    Write-Host "$(Get-Date -Format 'HH:mm:ss')  Git is already available at $gitPath."
+    Write-Info "$(Get-Date -Format 'HH:mm:ss')  Git is already available at $gitPath."
 }
+
 
 
 
