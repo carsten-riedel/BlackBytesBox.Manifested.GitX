@@ -143,6 +143,15 @@ catch {
     exit 1
 }
 
+# Detect OS and bail if not Windows
+if (Test-IsWindows) {
+    Write-Info -Message 'Detected Windows OS. Proceeding with MinGit installation...' -Color Cyan
+}
+else {
+    Write-Info -Message 'Non-Windows OS detected. Exiting script.' -Color Red
+    exit 1
+}
+
 # Only download MinGit if git.exe isn’t already on the PATH
 if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
     # Set DownloadFolder to %LocalAppData%\Programs\Git
