@@ -1266,7 +1266,7 @@ function Sync-RemoteRepoFiles {
 
 .DESCRIPTION
     Invoke-WebRequestEx uses Invoke-WebRequest -UseBasicParsing to get the raw HTTP stream,
-    then writes it in 1 MB chunks to the specified output file, avoiding progress‐bar and HTML‐parsing overhead.
+    then writes it in large chunks to the specified output file, avoiding progress-bar and HTML-parsing overhead.
 
 .PARAMETER Uri
     The URL to download.
@@ -1275,7 +1275,7 @@ function Sync-RemoteRepoFiles {
     The full path to write the downloaded content.
 
 .PARAMETER BufferSizeMB
-    Optional. The size of each read buffer in megabytes. Defaults to 1 (i.e. 1 MB).
+    Optional. The size of each read buffer in megabytes. Defaults to 1 (i.e. 1 MB).
 
 .PARAMETER TimeoutSec
     Optional. Timeout in seconds for the web request. Defaults to 0 (no timeout).
@@ -1289,11 +1289,11 @@ function Sync-RemoteRepoFiles {
 function Invoke-WebRequestEx {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory,Position=0)]
+        [Parameter(Mandatory, Position=0)]
         [ValidateNotNullOrEmpty()]
         [string]$Uri,
 
-        [Parameter(Mandatory,Position=1)]
+        [Parameter(Mandatory, Position=1)]
         [ValidateNotNullOrEmpty()]
         [string]$OutFile,
 
@@ -1306,14 +1306,15 @@ function Invoke-WebRequestEx {
         [int]$TimeoutSec = 0
     )
 
-    # Temporarily suppress the progress bar
+    # Temporarily suppress the progress preference
     $oldPP = $ProgressPreference
     $ProgressPreference = 'SilentlyContinue'
 
     try {
-        Write-Info -Message "Starting download: $Uri" -Color Cyan
+        # Log start to host with timestamp
+        Write-Host "$(Get-Date -Format 'HH:mm:ss')  Starting download: $Uri"
 
-        # Fire off the request
+        # Perform the web request with basic parsing
         $response = Invoke-WebRequest `
             -Uri $Uri `
             -UseBasicParsing `
@@ -1326,25 +1327,28 @@ function Invoke-WebRequestEx {
         $bufferSize = $BufferSizeMB * 1MB
         $buffer     = New-Object byte[] $bufferSize
 
-        # Read/write loop
+        # Stream loop
         while (($read = $inStream.Read($buffer, 0, $bufferSize)) -gt 0) {
             $outStream.Write($buffer, 0, $read)
         }
 
-        Write-Info -Message "Download complete: $OutFile" -Color Green
+        # Log completion
+        Write-Host "$(Get-Date -Format 'HH:mm:ss')  Download complete: $OutFile"
     }
     catch {
-        Write-Info -Message "ERROR downloading $Uri to $($OutFile): $_" -Color Red
+        # Log error and rethrow
+        Write-Host "$(Get-Date -Format 'HH:mm:ss')  ERROR downloading $Uri to $($OutFile): $_" -ForegroundColor Red
         throw
     }
     finally {
-        # Clean up
+        # Clean up streams
         if ($inStream)  { $inStream.Dispose() }
         if ($outStream) { $outStream.Dispose() }
-        # Restore progress bar setting
+        # Restore progress preference
         $ProgressPreference = $oldPP
     }
 }
+
 
 
 <#
