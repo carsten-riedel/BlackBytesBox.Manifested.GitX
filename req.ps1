@@ -163,7 +163,7 @@ if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
     # Add to current session PATH if not already present
     if ($env:Path -notlike "*$gitBin*") {
         $env:Path = "$gitBin;$env:Path"
-        Write-Info "$(Get-Date -Format 'HH:mm:ss')  Added $gitBin to current session PATH."
+        Write-Info "$(Get-Date -Format 'HH:mm:ss')  Added $gitBin to current session PATH." -Color Green
     }
 
     # Persist to user profile PATH
@@ -171,10 +171,10 @@ if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
     if ($currentUserPath -notlike "*$gitBin*") {
         $newUserPath = "$gitBin;$currentUserPath"
         [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
-        Write-Info "$(Get-Date -Format 'HH:mm:ss')  Persisted $gitBin to user PATH."
+        Write-Info "$(Get-Date -Format 'HH:mm:ss')  Persisted $gitBin to user PATH." -Color Green
     }
 
-    Write-Info "$(Get-Date -Format 'HH:mm:ss')  MinGit has been downloaded and configured."
+    Write-Info "$(Get-Date -Format 'HH:mm:ss')  MinGit has been downloaded and configured." -Color Green
 }
 else {
     $gitPath = (Get-Command git.exe).Source
