@@ -1260,6 +1260,92 @@ function Sync-RemoteRepoFiles {
     }
 }
 
+<#
+.SYNOPSIS
+    Quickly download a URI to a file by streaming in large buffers.
+
+.DESCRIPTION
+    Invoke-WebRequestEx uses Invoke-WebRequest -UseBasicParsing to get the raw HTTP stream,
+    then writes it in 1 MB chunks to the specified output file, avoiding progress‐bar and HTML‐parsing overhead.
+
+.PARAMETER Uri
+    The URL to download.
+
+.PARAMETER OutFile
+    The full path to write the downloaded content.
+
+.PARAMETER BufferSizeMB
+    Optional. The size of each read buffer in megabytes. Defaults to 1 (i.e. 1 MB).
+
+.PARAMETER TimeoutSec
+    Optional. Timeout in seconds for the web request. Defaults to 0 (no timeout).
+
+.EXAMPLE
+    Invoke-WebRequestEx -Uri 'https://example.com/large.zip' -OutFile 'C:\Temp\large.zip'
+
+.EXAMPLE
+    Invoke-WebRequestEx -Uri $assetUrl -OutFile $destFile -BufferSizeMB 4 -TimeoutSec 120
+#>
+function Invoke-WebRequestEx {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory,Position=0)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Uri,
+
+        [Parameter(Mandatory,Position=1)]
+        [ValidateNotNullOrEmpty()]
+        [string]$OutFile,
+
+        [Parameter(Position=2)]
+        [ValidateRange(1,64)]
+        [int]$BufferSizeMB = 1,
+
+        [Parameter(Position=3)]
+        [ValidateRange(0,[int]::MaxValue)]
+        [int]$TimeoutSec = 0
+    )
+
+    # Temporarily suppress the progress bar
+    $oldPP = $ProgressPreference
+    $ProgressPreference = 'SilentlyContinue'
+
+    try {
+        Write-Info -Message "Starting download: $Uri" -Color Cyan
+
+        # Fire off the request
+        $response = Invoke-WebRequest `
+            -Uri $Uri `
+            -UseBasicParsing `
+            -TimeoutSec $TimeoutSec
+
+        $inStream  = $response.RawContentStream
+        $outStream = [System.IO.File]::OpenWrite($OutFile)
+
+        # Compute buffer size in bytes
+        $bufferSize = $BufferSizeMB * 1MB
+        $buffer     = New-Object byte[] $bufferSize
+
+        # Read/write loop
+        while (($read = $inStream.Read($buffer, 0, $bufferSize)) -gt 0) {
+            $outStream.Write($buffer, 0, $read)
+        }
+
+        Write-Info -Message "Download complete: $OutFile" -Color Green
+    }
+    catch {
+        Write-Info -Message "ERROR downloading $Uri to $($OutFile): $_" -Color Red
+        throw
+    }
+    finally {
+        # Clean up
+        if ($inStream)  { $inStream.Dispose() }
+        if ($outStream) { $outStream.Dispose() }
+        # Restore progress bar setting
+        $ProgressPreference = $oldPP
+    }
+}
+
 
 <#
 .SYNOPSIS
@@ -1419,7 +1505,7 @@ function Get-GitHubLatestRelease {
         if ($DownloadFolder) {
             if ($Extract.IsPresent -and $name -match '\.zip$') {
                 $tempFile = Join-Path $tempDir $name
-                Invoke-WebRequest -Uri $url -OutFile $tempFile -UseBasicParsing
+                Invoke-WebRequestEx -Uri $url -OutFile $tempFile
                 $zip = [System.IO.Compression.ZipFile]::OpenRead($tempFile)
                 foreach ($entry in $zip.Entries) {
                     $destPath = Join-Path $targetDir $entry.FullName
