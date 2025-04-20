@@ -190,9 +190,27 @@ else {
     Write-Info "$(Get-Date -Format 'HH:mm:ss')  Git is already available at $gitPath."
 }
 
+
+# Remove Windows Store shim from PATH if present
+$storeShim = Join-Path $env:LocalAppData 'Microsoft\WindowsApps'
+
+# Current session
+if ($env:Path -like "*$storeShim*") {
+    $env:Path = ($env:Path -split ';' | Where-Object { $_ -ne $storeShim }) -join ';'
+    Write-Info -Message "Removed Windows Store shim from session PATH: $storeShim" -Color Yellow
+}
+
+# Persisted user PATH
+$currentUserPath = [Environment]::GetEnvironmentVariable('Path','User')
+if ($currentUserPath -like "*$storeShim*") {
+    $newUserPath = ($currentUserPath -split ';' | Where-Object { $_ -ne $storeShim }) -join ';'
+    [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
+    Write-Info -Message "Removed Windows Store shim from user PATH: $storeShim" -Color Yellow
+}
+
 # Check for python.exe
 if (-not (Get-Command python.exe -ErrorAction SilentlyContinue)) {
-    Write-Info -Message 'Python not detected. Cloning pyenv-win into %USERPROFILE%\.pyenv…' -Color Yellow
+    Write-Info -Message 'Python not detected. Cloning pyenv-win into %USERPROFILE%\.pyenv...' -Color Yellow
 
     # Clone the pyenv-win repo
     git clone https://github.com/pyenv-win/pyenv-win.git "$env:USERPROFILE\.pyenv"
