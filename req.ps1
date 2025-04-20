@@ -31,6 +31,18 @@ function Write-Info {
 # Begin script
 Write-Info -Message 'Starting script execution...'
 
+
+try {
+    Write-Info -Message 'Configuring execution policy to allow running PowerShell modules and scripts...' -Color Yellow
+    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+    Write-Info -Message 'Execution policy set to RemoteSigned. PowerShell modules and scripts can now run.' -Color Green
+}
+catch {
+    Write-Info -Message "ERROR: Failed to configure execution policy (RemoteSigned). $_" -Color Red
+    exit 1
+}
+
+
 try {
     Write-Info -Message 'Installing NuGet Package Provider...' -Color Yellow
     Install-PackageProvider -Name NuGet -Force -MinimumVersion 2.8.5.201 -Scope CurrentUser | Out-Null
@@ -71,6 +83,7 @@ catch {
     exit 1
 }
 
+Get-ChildItem "$HOME\Documents\WindowsPowerShell\Modules\BlackBytesBox.Manifested.Initialize" -Recurse | Unblock-File
 
 # Ensure the current user can run local scripts that are remotely signed
 #Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
