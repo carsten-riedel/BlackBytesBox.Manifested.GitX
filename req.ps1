@@ -37,7 +37,7 @@ try {
     $currentPolicy = Get-ExecutionPolicy -Scope CurrentUser
     Write-Info -Message "CurrentUser policy is '$currentPolicy'." -Color Cyan
 
-    $allowed = @('RemoteSigned', 'Unrestricted', 'Bypass', 'AllSigned')
+    $allowed = @('RemoteSigned', 'Unrestricted', 'Bypass')
     if ($allowed -contains $currentPolicy) {
         Write-Info -Message "Execution policy already allows script/module execution. No change needed." -Color Green
     }
