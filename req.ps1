@@ -31,7 +31,6 @@ function Write-Info {
 # Begin script
 Write-Info -Message 'Starting script execution...'
 
-
 try {
     Write-Info -Message 'Configuring execution policy to allow running PowerShell modules and scripts...' -Color Yellow
     Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
@@ -41,7 +40,6 @@ catch {
     Write-Info -Message "ERROR: Failed to configure execution policy (RemoteSigned). $_" -Color Red
     exit 1
 }
-
 
 try {
     Write-Info -Message 'Installing NuGet Package Provider...' -Color Yellow
