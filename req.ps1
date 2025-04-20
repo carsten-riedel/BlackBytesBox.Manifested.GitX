@@ -8,7 +8,7 @@ function Write-Info {
 }
 
 Write-Info 'Starting script execution ...'
-
+#f
 
 
 # Ensure the current user can run local scripts that are remotely signed
