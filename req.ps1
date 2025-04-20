@@ -143,6 +143,45 @@ catch {
     exit 1
 }
 
+# Only download MinGit if git.exe isn’t already on the PATH
+if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
+    # Set DownloadFolder to %LocalAppData%\Programs\Git
+    $downloadFolder = Join-Path $env:LocalAppData 'Programs\Git'
+
+    # Invoke the release‑downloader for MinGit x64 (excluding busybox builds)
+    $result = Get-GitHubLatestRelease `
+        -RepoUrl 'https://github.com/git-for-windows/git' `
+        -Whitelist '*MinGit*','*64-bit*' `
+        -Blacklist '*busy*' `
+        -IncludeVersionFolder `
+        -Extract `
+        -DownloadFolder $downloadFolder
+
+    # Grab the extracted directory from the result
+    $minGitPath = ($result | Select-Object -ExpandProperty Path | Select-Object -First 1)
+
+    # Add to current session PATH if not already present
+    if ($env:Path -notlike "*$minGitPath*") {
+        $env:Path = "$minGitPath;$env:Path"
+        Write-Host "$(Get-Date -Format 'HH:mm:ss')  Added $minGitPath to current session PATH."
+    }
+
+    # Persist to user profile PATH
+    $currentUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if ($currentUserPath -notlike "*$minGitPath*") {
+        $newUserPath = "$minGitPath;$currentUserPath"
+        [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
+        Write-Host "$(Get-Date -Format 'HH:mm:ss')  Persisted $minGitPath to user PATH."
+    }
+
+    Write-Host "$(Get-Date -Format 'HH:mm:ss')  MinGit has been downloaded to $downloadFolder."
+}
+else {
+    $gitPath = (Get-Command git.exe).Source
+    Write-Host "$(Get-Date -Format 'HH:mm:ss')  Git is already available at $gitPath."
+}
+
+
 
 
 
