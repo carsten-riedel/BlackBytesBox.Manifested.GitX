@@ -32,14 +32,26 @@ function Write-Info {
 Write-Info -Message 'Starting script execution...'
 
 try {
-    Write-Info -Message 'Configuring execution policy to allow running PowerShell modules and scripts...' -Color Yellow
-    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-    Write-Info -Message 'Execution policy set to RemoteSigned. PowerShell modules and scripts can now run.' -Color Green
+    Write-Info -Message 'Checking current execution policy...' -Color Yellow
+
+    $currentPolicy = Get-ExecutionPolicy -Scope CurrentUser
+    Write-Info -Message "CurrentUser policy is '$currentPolicy'." -Color Cyan
+
+    $allowed = @('RemoteSigned', 'Unrestricted', 'Bypass', 'AllSigned')
+    if ($allowed -contains $currentPolicy) {
+        Write-Info -Message "Execution policy already allows script/module execution. No change needed." -Color Green
+    }
+    else {
+        Write-Info -Message 'Setting execution policy to RemoteSigned to allow scripts/modules...' -Color Yellow
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+        Write-Info -Message 'Execution policy updated to RemoteSigned. Scripts and modules can now run.' -Color Green
+    }
 }
 catch {
-    Write-Info -Message "ERROR: Failed to configure execution policy (RemoteSigned). $_" -Color Red
+    Write-Info -Message "ERROR: Failed to configure execution policy. $_" -Color Red
     exit 1
 }
+
 
 try {
     Write-Info -Message 'Installing NuGet Package Provider...' -Color Yellow
