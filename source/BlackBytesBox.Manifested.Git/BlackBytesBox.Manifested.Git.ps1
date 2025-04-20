@@ -1454,6 +1454,204 @@ function Get-GitHubLatestRelease {
     return $results
 }
 
+<#
+.SYNOPSIS
+Gets filtered asset names, version, download URLs—and optionally downloads them into structured subfolders with version support using WebClient for PowerShell 5.
+
+.DESCRIPTION
+Parses the provided GitHub repo URL, fetches the latest release’s assets, and:
+- Lists Name, Version, DownloadUrl, and Path for each asset.
+- Default DownloadFolder is the user's Downloads folder if not specified.
+- By default, each asset is placed in its own subfolder; use –NoSubfolder to disable per-asset subfolders.
+- If –IncludeVersionFolder is used, prepends the release tag as a version folder under DownloadFolder.
+- If –Extract is used, ZIPs are downloaded to a temp folder, extracted into the target directory (with overwrite), and temporary files cleaned.
+- Uses WebClient instead of Invoke-WebRequest for broader compatibility on Windows 10 with PowerShell 5.
+- The return `Path` property will be the full file path for non-extracted assets or the directory path where contents were extracted.
+
+.PARAMETER RepoUrl
+Full URL of the GitHub repository (e.g. https://github.com/owner/repo).
+
+.PARAMETER Filter
+Wildcard patterns; only assets whose names match *every* pattern are included.
+
+.PARAMETER DownloadFolder
+Root folder where assets (or their subfolders) will be placed. Defaults to "$HOME\Downloads" if not provided.
+
+.PARAMETER NoSubfolder
+Switch: when present, disables creation of per-asset subfolders (default is to use subfolders).
+
+.PARAMETER IncludeVersionFolder
+Switch: when present, inserts a version folder (the release tag) under DownloadFolder before any subfolders.
+
+.PARAMETER Extract
+Switch: for ZIP assets, download to a temp folder using WebClient, extract (overwriting) into the target directory, then remove temp data.
+
+.OUTPUTS
+PSCustomObject with properties:
+- Name
+- Version
+- DownloadUrl
+- Path   # file path or extract directory
+
+.EXAMPLE
+# Download all assets into per-asset folders under a version folder
+Get-GitHubLatestReleaseWebClient \
+  -RepoUrl 'https://github.com/ggml-org/llama.cpp' \
+  -IncludeVersionFolder
+
+.EXAMPLE
+# Filter AVX2 x64 zips, download+extract into versioned folders without asset subfolders
+Get-GitHubLatestReleaseWebClient \
+  -RepoUrl 'https://github.com/ggml-org/llama.cpp' \
+  -Filter '*avx2*','*x64*' \
+  -IncludeVersionFolder \
+  -NoSubfolder \
+  -Extract
+#>  
+function Get-GitHubLatestReleaseWebClient {  
+    [CmdletBinding()]  
+    [alias("gglrwc")]  
+    param(  
+        [Parameter(Mandatory, Position=0)]  
+        [ValidateNotNullOrEmpty()]  
+        [string]$RepoUrl,  
+
+        [Parameter(Position=1)]  
+        [string[]]$Filter,  
+
+        [Parameter()]  
+        [ValidateNotNullOrEmpty()]  
+        [string]$DownloadFolder,  
+
+        [Parameter()]  
+        [switch]$NoSubfolder,  
+
+        [Parameter()]  
+        [switch]$IncludeVersionFolder,  
+
+        [Parameter()]  
+        [switch]$Extract  
+    )  
+
+    # Default DownloadFolder to user's Downloads if not provided  
+    if (-not $PSBoundParameters.ContainsKey('DownloadFolder')) {  
+        $DownloadFolder = Join-Path $HOME 'Downloads'  
+    }  
+
+    if ($Extract.IsPresent -and -not $DownloadFolder) {  
+        Write-Error "The –Extract switch requires the –DownloadFolder parameter."; return  
+    }  
+
+    # Determine subfolder usage: default true (use subfolders), disabled by -NoSubfolder  
+    $useSubfolder = -not $NoSubfolder.IsPresent  
+
+    # Parse owner/repo  
+    try {  
+        $segments = ([Uri]$RepoUrl).AbsolutePath.Trim('/') -split '/'  
+        if ($segments.Count -lt 2) { throw "Invalid URL format" }  
+        $owner, $repo = $segments[0], $segments[1]  
+    } catch {  
+        Write-Error "Failed to parse RepoUrl '${RepoUrl}': $($_.Exception.Message)"; return  
+    }  
+
+    # Fetch latest release  
+    try {  
+        $apiUri = "https://api.github.com/repos/${owner}/${repo}/releases/latest"  
+        $release = Invoke-RestMethod -Uri $apiUri -Headers @{ Accept = 'application/vnd.github.v3+json' } -Method Get  
+    } catch {  
+        Write-Error "Failed to fetch latest release for ${owner}/${repo}: $($_.Exception.Message)"; return  
+    }  
+
+    $version = $release.tag_name  
+    $assets  = $release.assets  
+
+    # Apply filters  
+    if ($Filter) {  
+        $assets = $assets | Where-Object {  
+            $n = $_.name  
+            foreach ($pattern in $Filter) {  
+                if ($n -notlike $pattern) { return $false }  
+            }  
+            return $true  
+        }  
+    }  
+
+    # Ensure root folder exists  
+    if ($DownloadFolder -and -not (Test-Path $DownloadFolder)) {  
+        New-Item -ItemType Directory -Path $DownloadFolder -Force | Out-Null  
+    }  
+
+    # Prepare temp for extract  
+    if ($Extract.IsPresent) {  
+        $tempDir = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())  
+        New-Item -ItemType Directory -Path $tempDir | Out-Null  
+        Add-Type -AssemblyName 'System.IO.Compression.FileSystem'  
+    }  
+
+    # Initialize WebClient once  
+    $wc = New-Object System.Net.WebClient  
+
+    # Process assets  
+    $results = foreach ($asset in $assets) {  
+        $name = $asset.name  
+        $url  = $asset.browser_download_url  
+        $targetDir = $DownloadFolder  
+
+        # Build directory path  
+        if ($IncludeVersionFolder) {  
+            $targetDir = Join-Path $targetDir $version  
+        }  
+        if ($useSubfolder) {  
+            $base = [IO.Path]::GetFileNameWithoutExtension($name)  
+            $targetDir = Join-Path $targetDir $base  
+        }  
+        if ($targetDir -and -not (Test-Path $targetDir)) {  
+            New-Item -ItemType Directory -Path $targetDir -Force | Out-Null  
+        }  
+
+        # Initialize path variable  
+        $path = $null  
+
+        # Download/extract  
+        if ($DownloadFolder) {  
+            if ($Extract.IsPresent -and $name -match '\.zip$') {  
+                $tempFile = Join-Path $tempDir $name  
+                $wc.DownloadFile($url, $tempFile)  
+                $zip = [System.IO.Compression.ZipFile]::OpenRead($tempFile)  
+                foreach ($entry in $zip.Entries) {  
+                    $destPath = Join-Path $targetDir $entry.FullName  
+                    $destDir  = Split-Path $destPath -Parent  
+                    if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }  
+                    if ($entry.Name) {  
+                        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $destPath, $true)  
+                    }  
+                }  
+                $zip.Dispose()  
+                Remove-Item -Path $tempFile -Force  
+                # For extracted zips, Path is the directory  
+                $path = $targetDir  
+            } else {  
+                $destFile = Join-Path $targetDir $name  
+                $wc.DownloadFile($url, $destFile)  
+                # For non-extracted assets, Path is the file path  
+                $path = $destFile  
+            }  
+        }  
+
+        [PSCustomObject]@{  
+            Name        = $name  
+            Version     = $version  
+            DownloadUrl = $url  
+            Path        = $path  
+        }  
+    }  
+
+    # Cleanup  
+    if ($Extract.IsPresent) { Remove-Item -Path $tempDir -Recurse -Force }  
+    return $results  
+}
+
+
 function Get-GitRepoFileMetadata {
     <#
     .SYNOPSIS
