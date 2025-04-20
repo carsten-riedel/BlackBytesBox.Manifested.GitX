@@ -1,13 +1,13 @@
-function Write‑Info {
+function Write-Info {
     param(
         [Parameter(Mandatory)][string]$Message,
         [ConsoleColor]$Color = [ConsoleColor]::Cyan
     )
-    $ts = (Get‑Date).ToString('HH:mm:ss')
-    Write‑Host "$ts  $Message" -ForegroundColor $Color
+    $ts = (Get-Date).ToString('HH:mm:ss')
+    Write-Host "$ts  $Message" -ForegroundColor $Color
 }
 
-Write‑Info 'Starting script execution ...'
+Write-Info 'Starting script execution ...'
 
 
 
