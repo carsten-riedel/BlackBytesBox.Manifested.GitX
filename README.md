@@ -45,7 +45,15 @@ Mirror-GitRepoWithDownloadContent `
   -RepoUrl "https://huggingface.co/microsoft/Phi-4-mini-instruct" `
   -BranchName "main" `
   -DownloadEndpoint "resolve" `
-  -DestinationRoot "C:\temp\test"
+  -DestinationRoot "C:\temp\huggingface"
+
+Mirror-GitRepoWithDownloadContent `
+  -RepoUrl "'https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct'" `
+  -BranchName "main" `
+  -DownloadEndpoint "resolve" `
+  -DestinationRoot "C:\temp\huggingface" `
+  -Filter 'onnx/*','runs/*'
+  
 
 # Retrieve Git repository information
 Get-GitCurrentBranch
