@@ -104,20 +104,13 @@ try {
     Write-Info -Message 'Checking installed PowerShellGet module version...' -Color Yellow
 
     # Get the highest available PowerShellGet version
-    $psg = Get-Module -ListAvailable -Name PowerShellGet |
-           Sort-Object Version -Descending |
-           Select-Object -First 1
+    $psg = Get-Module -ListAvailable -Name PowerShellGet | Sort-Object Version -Descending | Select-Object -First 1
 
     $minVersion = [Version]'2.2.5'
 
     if (-not $psg -or [Version]$psg.Version -lt $minVersion) {
         Write-Info -Message "Updating PowerShellGet module to at least version $minVersion..." -Color Yellow
-        Install-Module -Name PowerShellGet `
-                       -MinimumVersion $minVersion `
-                       -Force `
-                       -Scope CurrentUser `
-                       -AllowClobber `
-                       -WarningAction SilentlyContinue | Out-Null
+        Install-Module -Name PowerShellGet -MinimumVersion $minVersion -Force -Scope CurrentUser -AllowClobber -WarningAction SilentlyContinue | Out-Null
         Write-Info -Message 'PowerShellGet module updated successfully.' -Color Green
     }
     else {
