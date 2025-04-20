@@ -265,8 +265,10 @@ if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-C
     # --- END pyenv-win initialization ---
 }
 else {
-    $pyPath = (Get-Command python.exe).Source
-    Write-Info -Message "Python is already available at $pyPath. Skipping pyenv-win setup." -Color Green
+   # Determine which python source to report
+   $cmd = Get-Command python.exe -ErrorAction SilentlyContinue ?? Get-Command python -ErrorAction SilentlyContinue
+   $pyPath = $cmd.Source
+   Write-Info -Message "Python is already available at $pyPath. Skipping pyenv-win setup." -Color Green
 }
 
 
