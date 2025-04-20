@@ -208,7 +208,9 @@ if ($currentUserPath -like "*$storeShim*") {
     Write-Info -Message "Removed Windows Store shim from user PATH: $storeShim" -Color Yellow
 }
 
-# Check for python.exe
+# --- Remove Windows Store shim, detect OS, install MinGit… [omitted for brevity] ---
+
+# Check for python.exe / install pyenv-win
 if (-not (Get-Command python.exe -ErrorAction SilentlyContinue)) {
     Write-Info -Message 'Python not detected. Cloning pyenv-win into %USERPROFILE%\.pyenv...' -Color Yellow
 
@@ -218,14 +220,49 @@ if (-not (Get-Command python.exe -ErrorAction SilentlyContinue)) {
         Write-Info -Message 'ERROR: git clone failed. Please check your Git configuration.' -Color Red
         exit 1
     }
-
     Write-Info -Message 'pyenv-win cloned successfully.' -Color Green
-    Write-Info -Message 'You can now run pyenv commands (reload your shell to pick up $HOME\.pyenv\bin).' -Color Cyan
+
+    # --- BEGIN pyenv-win initialization ---
+
+    # Define the root path
+    $pyenvRoot = Join-Path $env:USERPROFILE '.pyenv\pyenv-win'
+
+    # 1) Update current session env vars
+    $env:PYENV       = $pyenvRoot
+    $env:PYENV_HOME  = $pyenvRoot
+    $env:PYENV_ROOT  = $pyenvRoot
+    $env:Path        = "$pyenvRoot\bin;$pyenvRoot\shims;$env:Path"
+    Write-Info -Message "Session variables set: PYENV, PYENV_HOME, PYENV_ROOT, and PATH updated." -Color Cyan
+
+    # 2) Persist to user environment
+    [Environment]::SetEnvironmentVariable('PYENV',      $pyenvRoot, 'User')
+    [Environment]::SetEnvironmentVariable('PYENV_HOME', $pyenvRoot, 'User')
+    [Environment]::SetEnvironmentVariable('PYENV_ROOT', $pyenvRoot, 'User')
+
+    # Prepend to the persisted user PATH
+    $userPath = [Environment]::GetEnvironmentVariable('Path','User')
+    if ($userPath -notlike "*$pyenvRoot*") {
+        $newUserPath = "$pyenvRoot\bin;$pyenvRoot\shims;$userPath"
+        [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
+        Write-Info -Message "Persisted pyenv-win paths to user PATH." -Color Cyan
+    }
+
+    # 3) Initialize and install Python versions
+    Write-Info -Message 'Rehashing pyenv and installing Python 3.11.1…' -Color Yellow
+    & pyenv rehash
+    & pyenv install 3.11.1
+    & pyenv global  3.11.1
+
+    Write-Info -Message 'pyenv initialization complete. Installed versions:' -Color Green
+    & pyenv versions
+
+    # --- END pyenv-win initialization ---
 }
 else {
     $pyPath = (Get-Command python.exe).Source
     Write-Info -Message "Python is already available at $pyPath. Skipping pyenv-win setup." -Color Green
 }
+
 
 
 
