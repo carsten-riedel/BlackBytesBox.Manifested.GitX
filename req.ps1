@@ -75,14 +75,30 @@ catch {
 }
 
 try {
-    Write-Info -Message 'Setting PSGallery as a trusted repository...' -Color Yellow
-    Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-    Write-Info -Message 'PSGallery is now trusted.' -Color Green
+    Write-Info -Message 'Checking for PSGallery repository...' -Color Yellow
+
+    # Try to get PSGallery; don’t stop on error so we can test for null
+    $repo = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
+
+    if (-not $repo) {
+        Write-Info -Message 'PSGallery not found. Registering default PowerShell Gallery as trusted...' -Color Yellow
+        Register-PSRepository -Default -InstallationPolicy Trusted
+        Write-Info -Message 'PSGallery registered and trusted.' -Color Green
+    }
+    elseif ($repo.InstallationPolicy -ne 'Trusted') {
+        Write-Info -Message 'PSGallery found but not trusted. Setting policy to Trusted...' -Color Yellow
+        Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+        Write-Info -Message 'PSGallery is now trusted.' -Color Green
+    }
+    else {
+        Write-Info -Message 'PSGallery is already registered and trusted. No action needed.' -Color Green
+    }
 }
 catch {
-    Write-Info -Message "ERROR: Failed to trust PSGallery. $_" -Color Red
+    Write-Info -Message "ERROR: Failed to verify/register/trust PSGallery. $_" -Color Red
     exit 1
 }
+
 
 try {
     Write-Info -Message 'Updating PowerShellGet module...' -Color Yellow
