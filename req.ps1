@@ -214,13 +214,19 @@ if ($currentUserPath -like "*$storeShim*") {
 if (-not (Get-Command python.exe -ErrorAction SilentlyContinue)) {
     Write-Info -Message 'Python not detected. Cloning pyenv-win into %USERPROFILE%\.pyenv...' -Color Yellow
 
-    # Clone the pyenv-win repo
-    git clone https://github.com/pyenv-win/pyenv-win.git "$env:USERPROFILE\.pyenv"
-    if ($LASTEXITCODE -ne 0) {
-        Write-Info -Message 'ERROR: git clone failed. Please check your Git configuration.' -Color Red
-        exit 1
+    # Validate Git clone operation idempotently
+    $repoPath = "$env:USERPROFILE\.pyenv"
+    if (Test-Path $repoPath) {
+        Write-Info -Message "pyenv-win repo already exists at $repoPath; skipping clone." -Color Yellow
+    } else {
+        git clone https://github.com/pyenv-win/pyenv-win.git $repoPath
+        if ($LASTEXITCODE -ne 0) {
+            Write-Info -Message 'ERROR: git clone failed. Please check your Git configuration.' -Color Red
+            exit 1
+        }
+        Write-Info -Message 'pyenv-win cloned successfully.' -Color Green
     }
-    Write-Info -Message 'pyenv-win cloned successfully.' -Color Green
+
 
     # --- BEGIN pyenv-win initialization ---
 
