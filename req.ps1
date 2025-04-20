@@ -211,7 +211,7 @@ if ($currentUserPath -like "*$storeShim*") {
 # --- Remove Windows Store shim, detect OS, install MinGit… [omitted for brevity] ---
 
 # Check for python.exe / install pyenv-win
-if (-not (Get-Command python.exe -ErrorAction SilentlyContinue)) {
+if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-Command python -ErrorAction SilentlyContinue)) {
     Write-Info -Message 'Python not detected. Cloning pyenv-win into %USERPROFILE%\.pyenv...' -Color Yellow
 
     # Validate Git clone operation idempotently
