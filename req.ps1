@@ -133,6 +133,17 @@ catch {
     exit 1
 }
 
+try {
+    Write-Info -Message 'Installing BlackBytesBox.Manifested.Git module...' -Color Yellow
+    Install-Module -Name BlackBytesBox.Manifested.Git -Scope CurrentUser -AllowClobber -Force -Repository PSGallery
+    Write-Info -Message 'BlackBytesBox.Manifested.Git module installed successfully.' -Color Green
+}
+catch {
+    Write-Info -Message "ERROR: Failed to install BlackBytesBox.Manifested.Git module. $_" -Color Red
+    exit 1
+}
+
+
 
 
 # Ensure the current user can run local scripts that are remotely signed
