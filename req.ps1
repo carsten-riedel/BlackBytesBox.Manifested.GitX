@@ -101,14 +101,34 @@ catch {
 
 
 try {
-    Write-Info -Message 'Updating PowerShellGet module...' -Color Yellow
-    Install-Module -Name PowerShellGet -Force -Scope CurrentUser -AllowClobber -WarningAction SilentlyContinue | Out-Null
-    Write-Info -Message 'PowerShellGet module updated successfully.' -Color Green
+    Write-Info -Message 'Checking installed PowerShellGet module version...' -Color Yellow
+
+    # Get the highest available PowerShellGet version
+    $psg = Get-Module -ListAvailable -Name PowerShellGet |
+           Sort-Object Version -Descending |
+           Select-Object -First 1
+
+    $minVersion = [Version]'2.2.5'
+
+    if (-not $psg -or [Version]$psg.Version -lt $minVersion) {
+        Write-Info -Message "Updating PowerShellGet module to at least version $minVersion..." -Color Yellow
+        Install-Module -Name PowerShellGet `
+                       -MinimumVersion $minVersion `
+                       -Force `
+                       -Scope CurrentUser `
+                       -AllowClobber `
+                       -WarningAction SilentlyContinue | Out-Null
+        Write-Info -Message 'PowerShellGet module updated successfully.' -Color Green
+    }
+    else {
+        Write-Info -Message "PowerShellGet version $($psg.Version) is already ≥ $minVersion. No update needed." -Color Green
+    }
 }
 catch {
     Write-Info -Message "ERROR: Failed to update PowerShellGet module. $_" -Color Red
     exit 1
 }
+
 
 try {
     Write-Info -Message 'Installing BlackBytesBox.Manifested.Initialize module...' -Color Yellow
