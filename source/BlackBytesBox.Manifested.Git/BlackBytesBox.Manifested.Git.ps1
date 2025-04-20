@@ -1349,7 +1349,7 @@ function Invoke-WebRequestEx {
 
 <#
 .SYNOPSIS
-Gets filtered asset names, version, download URLs—and optionally downloads them into structured subfolders with version support.
+Gets matching asset names, version, download URLs—and optionally downloads them into structured subfolders with version support using WebClient for PowerShell 5.
 
 .DESCRIPTION
 Parses the provided GitHub repo URL, fetches the latest release’s assets, and:
@@ -1357,14 +1357,18 @@ Parses the provided GitHub repo URL, fetches the latest release’s assets, and:
 - Default DownloadFolder is the user's Downloads folder if not specified.
 - By default, each asset is placed in its own subfolder; use –NoSubfolder to disable per-asset subfolders.
 - If –IncludeVersionFolder is used, prepends the release tag as a version folder under DownloadFolder.
-- If –Extract is used, ZIPs are downloaded to a temp folder, extracted into the target directory (with overwrite), and temporary files cleaned.
-- The return `Path` property will be the full file path for non-extracted assets or the directory path where contents were extracted.
+- If –Extract is used, ZIPs are downloaded to a temp folder using Invoke-WebRequestEx, extracted into the target directory (with overwrite), and temporary files cleaned.
+- Supports –Whitelist (allowlist) to include only assets matching *every* pattern.
+- Supports –BlackList to exclude assets whose names contain *any* blacklist string.
 
 .PARAMETER RepoUrl
 Full URL of the GitHub repository (e.g. https://github.com/owner/repo).
 
-.PARAMETER Filter
-Wildcard patterns; only assets whose names match *every* pattern are included.
+.PARAMETER Whitelist
+Wildcard patterns; only assets whose names match *every* pattern in this allowlist are included.
+
+.PARAMETER BlackList
+Substring patterns; assets containing *any* of these strings in their names are excluded.
 
 .PARAMETER DownloadFolder
 Root folder where assets (or their subfolders) will be placed. Defaults to "$HOME\Downloads" if not provided.
@@ -1376,7 +1380,7 @@ Switch: when present, disables creation of per-asset subfolders (default is to u
 Switch: when present, inserts a version folder (the release tag) under DownloadFolder before any subfolders.
 
 .PARAMETER Extract
-Switch: for ZIP assets, download to a temp folder, extract (overwriting) into the target directory, then remove temp data.
+Switch: for ZIP assets, download to a temp folder using Invoke-WebRequestEx, extract (overwriting) into the target directory, then remove temp data.
 
 .OUTPUTS
 PSCustomObject with properties:
@@ -1386,18 +1390,20 @@ PSCustomObject with properties:
 - Path   # file path or extract directory
 
 .EXAMPLE
-# Download all assets into per-asset folders under a version folder
-Get-GitHubLatestRelease `
-  -RepoUrl 'https://github.com/ggml-org/llama.cpp' `
+# Download all assets into per-asset folders under a version folder, excluding beta builds
+Get-GitHubLatestRelease \
+  -RepoUrl 'https://github.com/ggml-org/llama.cpp' \
+  -Whitelist '*x64*' \
+  -BlackList 'beta' \
   -IncludeVersionFolder
 
 .EXAMPLE
-# Filter AVX2 x64 zips, download+extract into versioned folders without asset subfolders
-Get-GitHubLatestRelease `
-  -RepoUrl 'https://github.com/ggml-org/llama.cpp' `
-  -Filter '*avx2*','*x64*' `
-  -IncludeVersionFolder `
-  -NoSubfolder `
+# Include AVX2 builds, skip debug artifacts, extract zips without subfolders
+Get-GitHubLatestRelease \
+  -RepoUrl 'https://github.com/ggml-org/llama.cpp' \
+  -Whitelist '*avx2*' \
+  -BlackList 'debug' \
+  -NoSubfolder \
   -Extract
 #>
 function Get-GitHubLatestRelease {
@@ -1408,8 +1414,11 @@ function Get-GitHubLatestRelease {
         [ValidateNotNullOrEmpty()]
         [string]$RepoUrl,
 
-        [Parameter(Position=1)]
-        [string[]]$Filter,
+        [Parameter()]
+        [string[]]$Whitelist,
+
+        [Parameter()]
+        [string[]]$BlackList,
 
         [Parameter()]
         [ValidateNotNullOrEmpty()]
@@ -1457,12 +1466,23 @@ function Get-GitHubLatestRelease {
     $version = $release.tag_name
     $assets  = $release.assets
 
-    # Apply filters
-    if ($Filter) {
+    # Apply allowlist (Whitelist)
+    if ($Whitelist) {
         $assets = $assets | Where-Object {
             $n = $_.name
-            foreach ($pattern in $Filter) {
+            foreach ($pattern in $Whitelist) {
                 if ($n -notlike $pattern) { return $false }
+            }
+            return $true
+        }
+    }
+
+    # Apply blacklist
+    if ($BlackList) {
+        $assets = $assets | Where-Object {
+            $n = $_.name
+            foreach ($bad in $BlackList) {
+                if ($n -like "$bad") { return $false }
             }
             return $true
         }
@@ -1521,7 +1541,7 @@ function Get-GitHubLatestRelease {
                 $path = $targetDir
             } else {
                 $destFile = Join-Path $targetDir $name
-                Invoke-WebRequest -Uri $url -OutFile $destFile -UseBasicParsing
+                Invoke-WebRequestEx -Uri $url -OutFile $destFile
                 # For non-extracted assets, Path is the file path
                 $path = $destFile
             }
@@ -1539,6 +1559,7 @@ function Get-GitHubLatestRelease {
     if ($Extract.IsPresent) { Remove-Item -Path $tempDir -Recurse -Force }
     return $results
 }
+
 
 <#
 .SYNOPSIS
