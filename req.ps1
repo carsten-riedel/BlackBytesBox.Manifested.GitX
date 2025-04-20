@@ -61,7 +61,15 @@ catch {
     exit 1
 }
 
-
+try {
+    Write-Info -Message 'Installing BlackBytesBox.Manifested.Initialize module...' -Color Yellow
+    Install-Module -Name BlackBytesBox.Manifested.Initialize -Scope CurrentUser -AllowClobber -Force -Repository PSGallery
+    Write-Info -Message 'BlackBytesBox.Manifested.Initialize module installed successfully.' -Color Green
+}
+catch {
+    Write-Info -Message "ERROR: Failed to install BlackBytesBox.Manifested.Initialize module. $_" -Color Red
+    exit 1
+}
 
 
 # Ensure the current user can run local scripts that are remotely signed
