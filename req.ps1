@@ -83,7 +83,7 @@ catch {
     exit 1
 }
 
-Get-ChildItem "$HOME\Documents\WindowsPowerShell\Modules\BlackBytesBox.Manifested.Initialize" -Recurse | Unblock-File
+
 
 # Ensure the current user can run local scripts that are remotely signed
 #Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
