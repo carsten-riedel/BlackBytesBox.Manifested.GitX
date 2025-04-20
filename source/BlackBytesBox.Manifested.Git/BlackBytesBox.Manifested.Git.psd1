@@ -12,7 +12,7 @@
 RootModule = 'BlackBytesBox.Manifested.Git.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.20252.16491'
+ModuleVersion = '0.20252.16509'
 
 # Supported PSEditions
 #CompatiblePSEditions = 'Desktop'
@@ -51,7 +51,7 @@ Description = 'Module for retrieving essential Git repository info, including th
 # ProcessorArchitecture = ''
 
 # Modules that must be imported into the global environment prior to importing this module
-#RequiredModules = @(@{ModuleName = 'CoreePower.Lib'; ModuleVersion = '0.20252.16491'; })
+#RequiredModules = @(@{ModuleName = 'CoreePower.Lib'; ModuleVersion = '0.20252.16509'; })
 
 # Assemblies that must be loaded prior to importing this module
 # RequiredAssemblies = @()
