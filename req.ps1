@@ -190,6 +190,25 @@ else {
     Write-Info "$(Get-Date -Format 'HH:mm:ss')  Git is already available at $gitPath."
 }
 
+# Check for python.exe
+if (-not (Get-Command python.exe -ErrorAction SilentlyContinue)) {
+    Write-Info -Message 'Python not detected. Cloning pyenv-win into %USERPROFILE%\.pyenv…' -Color Yellow
+
+    # Clone the pyenv-win repo
+    git clone https://github.com/pyenv-win/pyenv-win.git "$env:USERPROFILE\.pyenv"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Info -Message 'ERROR: git clone failed. Please check your Git configuration.' -Color Red
+        exit 1
+    }
+
+    Write-Info -Message 'pyenv-win cloned successfully.' -Color Green
+    Write-Info -Message 'You can now run pyenv commands (reload your shell to pick up $HOME\.pyenv\bin).' -Color Cyan
+}
+else {
+    $pyPath = (Get-Command python.exe).Source
+    Write-Info -Message "Python is already available at $pyPath. Skipping pyenv-win setup." -Color Green
+}
+
 
 
 
