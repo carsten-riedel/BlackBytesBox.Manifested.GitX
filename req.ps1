@@ -526,7 +526,7 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
     Invoke-VenvCommand "pip install torch transformers peft datasets safetensors"
 
     # Install conversion requirements if available
-    $conversionReqFile = Join-Path $programFolderLlamaCpp "requirements\requirements-convert_hf_to_gguf.txt"
+    $conversionReqFile = Join-Path $programFolderMsys2 "home\$($env:Username)\llama.cpp\requirements\requirements-convert_hf_to_gguf.txt"
     Write-Info "[INFO] Checking for conversion requirements file at '$conversionReqFile'..." -Color Cyan
     if (Test-Path -Path $conversionReqFile) {
         Write-Info "[INFO] Installing conversion requirements from '$conversionReqFile'..." -Color Cyan
