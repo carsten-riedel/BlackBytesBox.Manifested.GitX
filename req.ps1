@@ -28,6 +28,45 @@ function Write-Info {
     Write-Host "$timestamp  $Message" -ForegroundColor $Color
 }
 
+<#
+.SYNOPSIS
+Converts a Windows file path to a MSYS2-compatible Bash path.
+
+.DESCRIPTION
+Transforms a given Windows-style path (e.g., C:\folder\file) into the POSIX-style path
+format used by MSYS2 Bash (e.g., /c/folder/file), enabling cross-environment compatibility.
+
+.PARAMETER WindowsPath
+The absolute Windows path to be converted (e.g., 'C:\Users\Projects').
+
+.OUTPUTS
+System.String. Returns the corresponding POSIX-style path string.
+
+.EXAMPLE
+Convert-ToMsysPath -WindowsPath "D:\Dev\Tools"
+# Returns: /d/Dev/Tools
+
+.NOTES
+Throws an error if the input path does not match a valid drive-prefixed format.
+#>
+function Convert-ToMsysPath {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$WindowsPath
+    )
+    # Replace backslashes with slashes
+    $converted = $WindowsPath -replace '\\', '/'
+    
+    # Extract drive letter and path
+    if ($converted -match '^([A-Za-z]):(.*)') {
+        $drive = $matches[1].ToLower()
+        $path = $matches[2]
+        return "/$drive$path"
+    }
+
+    throw "Invalid Windows path format: $WindowsPath"
+}
+
 # Begin script
 Write-Info -Message 'Starting script execution...'
 
@@ -275,6 +314,83 @@ else {
 }
 
 
+# Check for MSYS2 installation by looking for the 'msys64' folder
+$programFolder = Join-Path $env:LocalAppData 'Programs'
+
+# If the MSYS2 'msys64' folder doesn't exist, install
+if (-not (Test-Path -Path (Join-Path $programFolder 'msys64') -PathType Container)) {
+    Write-Info "MSYS2 not found. Starting installation..." -Color Yellow
+
+    # Use the system temp directory for downloads and cleanup
+    $tempRoot       = $env:TEMP
+    $tempFolderName = [System.IO.Path]::GetRandomFileName()
+    $tempFolder     = Join-Path $tempRoot $tempFolderName
+    New-Item -ItemType Directory -Path $tempFolder -Force | Out-Null
+    Write-Info "Created temporary folder: $tempFolder" -Color Green
+
+    # Download the latest self-extracting installer from GitHub
+    Write-Info "Downloading latest MSYS2 installer..." -Color Cyan
+    $result = Get-GitHubLatestRelease `
+        -RepoUrl 'https://github.com/msys2/msys2-installer' `
+        -Whitelist '*latest.sfx.exe*' `
+        -IncludeVersionFolder `
+        -DownloadFolder   $tempFolder
+    Write-Info "Download complete." -Color Green
+
+    # Locate and run the installer in silent mode, output to ProgramFolder (recursive search)
+    $installer = Get-ChildItem -Path $tempFolder -Filter '*.sfx.exe' -Recurse -File | Select-Object -First 1
+    Write-Info "Running installer: $($installer.FullName)" -Color Cyan
+    & $installer.FullName -y -o"$programFolder" | Out-Null
+    Write-Info "MSYS2 installation finished." -Color Green
+
+    # Clean up: remove installer and temporary folder
+    Remove-Item -Path $installer.FullName -Force
+    Write-Info "Removed installer executable." -Color Green
+    Remove-Item -Path $tempFolder     -Recurse -Force
+    Write-Info "Cleaned up temporary folder: $tempFolder" -Color Green
+}
+else {
+    Write-Info "MSYS2 already installed (found '$($programFolder)\msys64')." -Color Cyan
+}
+
+$binOutput = "C:\llama"
+
+if (-not (Test-Path -Path $binOutput -PathType Container)) {
+
+    $msysInstallPath = Join-Path $env:LocalAppData 'Programs\msys64'
+    $msysShellScript = """$msysInstallPath\msys2_shell.cmd"""
+    $msysShellArgs = "-defterm -here -no-start -ucrt64 -shell bash -c"
+    $fullShellCommand = "& $msysShellScript $msysShellArgs"`
+
+    $bashCmdBaseInvoke = "pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-gcc git mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja"
+    Write-Output "$fullShellCommand '$bashCmdBaseInvoke'"
+    Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
+
+    $bashCmdBaseInvoke = "git clone --recurse-submodules https://github.com/ggerganov/llama.cpp.git ""`$HOME/llama.cpp"""
+    Write-Output "$fullShellCommand '$bashCmdBaseInvoke'"
+    Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
+
+    $binOutput = "C:\llama"
+    $binOutputBash = Convert-ToMsysPath -WindowsPath $binOutput
+    $bashCmdBaseInvoke = "cmake -S `$HOME/llama.cpp -B `$HOME/llama.cpp/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$binOutputBash -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_SERVER=ON"
+    Write-Output "$fullShellCommand '$bashCmdBaseInvoke'"
+    Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
+
+    $bashCmdBaseInvoke = "cmake --build `$HOME/llama.cpp/build --config Release"
+    Write-Output "$fullShellCommand '$bashCmdBaseInvoke'"
+    Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
+
+    $bashCmdBaseInvoke = "cmake --install `$HOME/llama.cpp/build --config Release"
+    Write-Output "$fullShellCommand '$bashCmdBaseInvoke'"
+    Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
+
+} else {
+    Write-Info "Llama.cpp already present (found '$binOutput')." -Color Cyan
+}
+
+
+
+#Invoke-RestMethod -Uri https://raw.githubusercontent.com/carsten-riedel/BlackBytesBox.Manifested.GitX/refs/heads/main/req.ps1 | Invoke-Expression
 
 
 
