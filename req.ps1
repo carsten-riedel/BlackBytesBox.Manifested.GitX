@@ -67,6 +67,36 @@ function Convert-ToMsysPath {
     throw "Invalid Windows path format: $WindowsPath"
 }
 
+<#
+.SYNOPSIS
+    Ensures each directory path is prepended to the user and session PATH environment variable if not already present.
+.DESCRIPTION
+    Adds one or more fully qualified directory paths to the user and current session PATH if not already present.
+    This function is general-purpose and does not assume any subfolder structure.
+.PARAMETER Paths
+    An array of fully qualified directory paths to ensure are included in the user and session PATH.
+.EXAMPLE
+    Add-ToUserPathIfMissing -Paths "C:\Tools\bin", "C:\Dev\shims"
+#>
+function Add-ToUserPathIfMissing {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string[]]$Paths
+    )
+
+    $userPath = [Environment]::GetEnvironmentVariable('Path','User')
+    $sessionPath = [Environment]::GetEnvironmentVariable('Path','Process')
+    $missingPaths = $Paths | Where-Object { $userPath -notlike "*$_*" }
+
+    if ($missingPaths) {
+        $newUserPath = ($missingPaths -join ';') + ';' + $userPath
+        [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
+
+        $newSessionPath = ($missingPaths -join ';') + ';' + $sessionPath
+        [Environment]::SetEnvironmentVariable('Path', $newSessionPath, 'Process')
+    }
+}
+
 # Begin script
 Write-Info -Message 'Starting script execution...'
 
@@ -396,6 +426,8 @@ if (-not (Test-Path -Path $programFolder -PathType Container)) {
     $bashCmdBaseInvoke = "cp /ucrt64/bin/*.dll ""$binOutputBash/bin/"""
     Write-Info "Executing: $bashCmdBaseInvoke" -Color Gray
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
+
+    Add-ToUserPathIfMissing -Paths "$programFolder\bin"
 
 } else {
     Write-Info "Llama.cpp already present (found '$binOutput')." -Color Green
