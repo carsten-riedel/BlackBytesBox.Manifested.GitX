@@ -237,6 +237,163 @@ function Write-LogInline {
     }
 }
 
+<#
+.SYNOPSIS
+    Downloads content from a URI to a file with inline progress logging.
+
+.DESCRIPTION
+    Sends an HTTP request and streams the response content in chunks to a local file.
+    Reports progress via Write-LogInline, supports overwrite control, custom headers,
+    timeouts, credentials, and configurable buffer size.
+
+.PARAMETER Uri
+    The URI to download. Must be a non-empty string.
+
+.PARAMETER OutFile
+    Path to save the downloaded file. Must be a non-empty string. Use -Force to overwrite.
+
+.PARAMETER Method
+    HTTP method to use. Default: GET.
+
+.PARAMETER Headers
+    Hashtable of HTTP headers to include in the request.
+
+.PARAMETER TimeoutSec
+    Timeout in seconds for the request (0 = infinite). Default: 0.
+
+.PARAMETER Credential
+    PSCredential for authenticated requests.
+
+.PARAMETER Body
+    Byte[] payload for POST/PUT/PATCH methods. Implicit ParameterSet triggers with-body logic.
+
+.PARAMETER Force
+    Switch to overwrite existing OutFile.
+
+.PARAMETER BufferSize
+    Size in bytes of each read buffer. Default: 4MB.
+
+.EXAMPLE
+    Invoke-WebRequestEx -Uri 'https://example.com/large.bin' \
+                        -OutFile 'C:\temp\large.bin' \
+                        -Force
+#>
+function Invoke-WebRequestEx {
+    [CmdletBinding(DefaultParameterSetName = 'NoBody')]
+    param (
+        [Parameter(Mandatory, Position = 0)]
+        [ValidateNotNullOrEmpty()]
+        [string] $Uri,
+
+        [Parameter(Mandatory, Position = 1)]
+        [ValidateNotNullOrEmpty()]
+        [string] $OutFile,
+
+        [Parameter()]
+        [ValidateSet('GET','POST','PUT','DELETE','HEAD','OPTIONS','PATCH')]
+        [string] $Method = 'GET',
+
+        [Parameter()]
+        [hashtable] $Headers,
+
+        [Parameter()]
+        [ValidateRange(0, [int]::MaxValue)]
+        [int] $TimeoutSec = 0,
+
+        [Parameter()]
+        [System.Management.Automation.PSCredential] $Credential,
+
+        [Parameter(ParameterSetName = 'WithBody')]
+        [byte[]] $Body,
+
+        [Parameter()]
+        [switch] $Force,
+
+        [Parameter()]
+        [ValidateRange(1, [long]::MaxValue)]
+        [long] $BufferSize = 4MB
+    )
+
+    # Prepare output file
+    if (Test-Path $OutFile) {
+        if (-not $Force) {
+            throw "File '$OutFile' already exists. Use -Force to overwrite."
+        }
+    }
+
+    Write-LogInline -Level Information `
+                    -Template "Preparing download: {uri} to {file}" `
+                    -Params @{ uri = $Uri; file = $OutFile } `
+                    -Overwrite
+
+    # Initialize WebRequest
+    $req = [System.Net.WebRequest]::Create($Uri)
+    $req.Method = $Method
+    if ($TimeoutSec -gt 0) {
+        $req.Timeout = $TimeoutSec * 1000
+        $req.ReadWriteTimeout = $TimeoutSec * 1000
+    }
+    if ($Credential) { $req.Credentials = $Credential }
+    if ($Headers) { $Headers.GetEnumerator() | ForEach-Object { $req.Headers.Add($_.Name, $_.Value) } }
+
+    if ($PSCmdlet.ParameterSetName -eq 'WithBody') {
+        if ($Method -notin 'POST','PUT','PATCH') {
+            throw "Body parameter is only allowed with POST, PUT, or PATCH methods."
+        }
+        $req.ContentLength = $Body.Length
+        $stream = $req.GetRequestStream()
+        $stream.Write($Body, 0, $Body.Length)
+        $stream.Close()
+    }
+
+    try {
+        $resp = $req.GetResponse()
+        $inStream = $resp.GetResponseStream()
+        $mode = if ($Force) { 'Create' } else { 'CreateNew' }
+        $outStream = [System.IO.File]::Open($OutFile, $mode)
+
+        $total      = $resp.ContentLength
+        $downloaded = 0
+        $buffer     = New-Object byte[] $BufferSize
+
+        while (($read = $inStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            $outStream.Write($buffer, 0, $read)
+            $downloaded += $read
+
+            if ($total -gt 0) {
+                $pct = [math]::Round(100 * $downloaded / $total, 1)
+                Write-LogInline -Level Information `
+                                -Template "Downloaded {pct}% ({done}/{total} bytes)" `
+                                -Params @{ pct = $pct; done = $downloaded; total = $total } `
+                                -Overwrite
+            }
+            else {
+                Write-LogInline -Level Information `
+                                -Template "Downloaded {bytes} bytes..." `
+                                -Params @{ bytes = $downloaded } `
+                                -Overwrite
+            }
+        }
+
+        Write-LogInline -Level Information `
+                        -Template "Download complete: {file}" `
+                        -Params @{ file = $OutFile } `
+                        -Overwrite:$false
+    }
+    catch {
+        Write-LogInline -Level Error `
+                        -Template "Download failed: {err}" `
+                        -Params @{ err = $_.Exception.Message } `
+                        -Overwrite:$false
+        throw $_
+    }
+    finally {
+        $inStream?.Dispose()
+        $outStream?.Dispose()
+    }
+}
+
+
 $WriteLogInlineDefaults = @{
     FileMinLevel  = 'Verbose'
     MinLevel     = 'Verbose'
@@ -249,7 +406,7 @@ $WriteLogInlineDefaults = @{
 
 Write-LogInline -Level Verbose -Template "{hello}-{world} number {num} at {time} !" -Params "Hello","World",1, 1.2 @WriteLogInlineDefaults -InitialWrite
 Start-Sleep -Seconds 2
-Write-LogInline -Level Debug -Template "{hello}-{world} number {num} at {time} !" -Params "Hello","World1",1, 1.33333 @WriteLogInlineDefaults -InitialWrite
+Write-LogInline -Level Debug -Template "{hello}-{world} number {num} at {time} !" -Params "Hello","World1",1, 1.33333 @WriteLogInlineDefaults
 Start-Sleep -Seconds 2
 Write-LogInline -Level Information -Template "{hello}-{world} number {num} at {time} !" -Params "Hello","World",1, 1.4 @WriteLogInlineDefaults
 Start-Sleep -Seconds 2
@@ -257,4 +414,6 @@ Write-LogInline -Level Error -Template "{hello}-{world} number {num} at {time} !
 Start-Sleep -Seconds 2
 Write-LogInline -Level Critical -Template "{hello}-{world} number {num} at {time} !" -Params "Hello","World",1, 1.6 @WriteLogInlineDefaults
 Start-Sleep -Seconds 2
+
+Invoke-WebRequestEx -Uri 'https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct/raw/main/model.safetensors' -OutFile 'C:\temp\x.bin' -Force
 
