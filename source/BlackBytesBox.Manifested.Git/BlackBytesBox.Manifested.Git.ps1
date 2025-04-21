@@ -1262,101 +1262,106 @@ function Sync-RemoteRepoFiles {
 
 <#
 .SYNOPSIS
-    Quickly download a URI to a file by streaming in large buffers.
+    Quickly download a URI to a file by streaming in large buffers via .NET, avoiding PowerShell's 2GB memory limit.
 
 .DESCRIPTION
-    Invoke-WebRequestEx uses Invoke-WebRequest (with optional -UseBasicParsing) to get the raw HTTP stream,
-    then writes it in large chunks to the specified output file, avoiding progress-bar and HTML-parsing overhead.
+    Invoke-WebRequestEx replaces Invoke-WebRequest for large downloads on PowerShell 5.x by using HttpWebRequest
+    and streaming the response directly to disk in fixed-size chunks, preventing in-memory buffering limitations.
 
 .PARAMETER Uri
     The URL to download.
 
 .PARAMETER OutFile
-    The full path to write the downloaded content.
+    The full path where the content will be saved.
 
-.PARAMETER BufferSizeMB
-    Optional. The size of each read buffer in megabytes. Defaults to 1 (i.e. 1 MB).
+.PARAMETER Method
+    HTTP method to use (GET, POST, PUT, etc.). Defaults to GET.
+
+.PARAMETER Headers
+    Hashtable of HTTP headers to include in the request.
 
 .PARAMETER TimeoutSec
-    Optional. Timeout in seconds for the web request. Defaults to 0 (no timeout).
+    Timeout for the request in seconds. If zero or omitted, default timeouts are used.
+
+.PARAMETER Credential
+    PSCredential for authenticated requests.
 
 .PARAMETER UseBasicParsing
-    Switch. Forward -UseBasicParsing to Invoke-WebRequest (only affects PS versions that support it).
+    Switch reserved for compatibility; parsed but not used in this implementation.
+
+.PARAMETER Body
+    Byte array to send as the request body for POST/PUT/PATCH.
+
+.PARAMETER Force
+    Reserved switch for future use; no effect in current implementation.
 
 .EXAMPLE
     Invoke-WebRequestEx -Uri 'https://example.com/large.zip' -OutFile 'C:\Temp\large.zip'
-
-.EXAMPLE
-    Invoke-WebRequestEx -Uri $assetUrl -OutFile $destFile -BufferSizeMB 4 -TimeoutSec 120 -UseBasicParsing
 #>
 function Invoke-WebRequestEx {
     [CmdletBinding()]
-    param(
-        [Parameter(Mandatory, Position=0)]
-        [ValidateNotNullOrEmpty()]
-        [string]$Uri,
-
-        [Parameter(Mandatory, Position=1)]
-        [ValidateNotNullOrEmpty()]
-        [string]$OutFile,
-
-        [Parameter(Position=2)]
-        [ValidateRange(1,64)]
-        [int]$BufferSizeMB = 1,
-
-        [Parameter(Position=3)]
-        [ValidateRange(0, [int]::MaxValue)]
-        [int]$TimeoutSec = 0,
-
-        [Parameter()]
-        [switch]$UseBasicParsing
+    param (
+        [Parameter(Mandatory, Position=0)] [string]              $Uri,
+        [Parameter(Mandatory, Position=1)] [string]              $OutFile,
+        [Parameter()]               [ValidateSet('GET','POST','PUT','DELETE','HEAD','OPTIONS','PATCH')] [string] $Method     = 'GET',
+        [Parameter()]               [hashtable]            $Headers,
+        [Parameter()]               [int]                  $TimeoutSec = 0,
+        [Parameter()]               [System.Management.Automation.PSCredential] $Credential,
+        [Parameter()]               [switch]               $UseBasicParsing,
+        [Parameter()]               [byte[]]               $Body,
+        [Parameter()]               [switch]               $Force
     )
 
-    # Suppress progress
-    $oldProgress = $ProgressPreference
-    $ProgressPreference = 'SilentlyContinue'
+    # Create and configure HttpWebRequest
+    $req = [System.Net.WebRequest]::Create($Uri)
+    $req.Method = $Method
 
+    if ($PSBoundParameters.ContainsKey('TimeoutSec') -and $TimeoutSec -gt 0) {
+        $req.Timeout          = $TimeoutSec * 1000      # milliseconds
+        $req.ReadWriteTimeout = $TimeoutSec * 1000
+    }
+
+    if ($Credential) {
+        $req.Credentials = $Credential
+    }
+
+    if ($Headers) {
+        foreach ($key in $Headers.Keys) {
+            $req.Headers.Add($key, $Headers[$key])
+        }
+    }
+
+    # Include request body for applicable methods
+    if ($Body -and $Method -in @('POST', 'PUT', 'PATCH')) {
+        $req.ContentLength = $Body.Length
+        $stream = $req.GetRequestStream()
+        $stream.Write($Body, 0, $Body.Length)
+        $stream.Close()
+    }
+
+    # Perform the download
     try {
-        $time = Get-Date -Format 'HH:mm:ss'
-        Write-Host "$time  Starting download: $Uri"
+        $resp      = $req.GetResponse()
+        $inStream  = $resp.GetResponseStream()
+        $outStream = [System.IO.File]::Open($OutFile, 'Create')
 
-        # Build parameter hashtable for Invoke-WebRequest
-        $invokeParams = @{
-            Uri        = $Uri
-            TimeoutSec = $TimeoutSec
-        }
-        if ($UseBasicParsing) {
-            $invokeParams.UseBasicParsing = $true
-        }
-
-        # Perform web request and get raw stream
-        $response = Invoke-WebRequest @invokeParams
-        $inStream  = $response.RawContentStream
-        $outStream = [System.IO.File]::OpenWrite($OutFile)
-
-        # Buffer setup
-        $bufferSize = $BufferSizeMB * 1MB
+        # Stream data in 4MB chunks
+        $bufferSize = 4MB
         $buffer     = New-Object byte[] $bufferSize
 
-        # Stream data
         while (($read = $inStream.Read($buffer, 0, $bufferSize)) -gt 0) {
             $outStream.Write($buffer, 0, $read)
         }
-
-        $time = Get-Date -Format 'HH:mm:ss'
-        Write-Host "$time  Download complete: $OutFile"
     }
     catch {
-        $time = Get-Date -Format 'HH:mm:ss'
-        Write-Host "$time  ERROR downloading $Uri -> $($OutFile): $_" -ForegroundColor Red
-        throw
+        throw "Download failed: $_"
     }
     finally {
-        if ($inStream)  { $inStream.Dispose() }
+        if ($inStream)  { $inStream.Dispose()  }
         if ($outStream) { $outStream.Dispose() }
-        $ProgressPreference = $oldProgress
     }
 }
+
 
 
 
@@ -1873,7 +1878,7 @@ function Mirror-GitRepoWithDownloadContent {
 }
 
 
-
+Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
 #Mirror-GitRepoWithDownloadContent -RepoUrl "https://huggingface.co/microsoft/Phi-4-mini-instruct" -BranchName "main" -DownloadEndpoint "resolve" -DestinationRoot "C:\CustomizeAI\huggingface"
 #Mirror-GitRepoWithDownloadContent -RepoUrl "https://huggingface.co/microsoft/phi-4" -BranchName "main" -DownloadEndpoint "resolve" -DestinationRoot "C:\temp\test"
 
