@@ -1265,7 +1265,7 @@ function Sync-RemoteRepoFiles {
     Quickly download a URI to a file by streaming in large buffers.
 
 .DESCRIPTION
-    Invoke-WebRequestEx uses Invoke-WebRequest -UseBasicParsing to get the raw HTTP stream,
+    Invoke-WebRequestEx uses Invoke-WebRequest (with optional -UseBasicParsing) to get the raw HTTP stream,
     then writes it in large chunks to the specified output file, avoiding progress-bar and HTML-parsing overhead.
 
 .PARAMETER Uri
@@ -1280,11 +1280,14 @@ function Sync-RemoteRepoFiles {
 .PARAMETER TimeoutSec
     Optional. Timeout in seconds for the web request. Defaults to 0 (no timeout).
 
+.PARAMETER UseBasicParsing
+    Switch. Forward -UseBasicParsing to Invoke-WebRequest (only affects PS versions that support it).
+
 .EXAMPLE
     Invoke-WebRequestEx -Uri 'https://example.com/large.zip' -OutFile 'C:\Temp\large.zip'
 
 .EXAMPLE
-    Invoke-WebRequestEx -Uri $assetUrl -OutFile $destFile -BufferSizeMB 4 -TimeoutSec 120
+    Invoke-WebRequestEx -Uri $assetUrl -OutFile $destFile -BufferSizeMB 4 -TimeoutSec 120 -UseBasicParsing
 #>
 function Invoke-WebRequestEx {
     [CmdletBinding()]
@@ -1302,52 +1305,60 @@ function Invoke-WebRequestEx {
         [int]$BufferSizeMB = 1,
 
         [Parameter(Position=3)]
-        [ValidateRange(0,[int]::MaxValue)]
-        [int]$TimeoutSec = 0
+        [ValidateRange(0, [int]::MaxValue)]
+        [int]$TimeoutSec = 0,
+
+        [Parameter()]
+        [switch]$UseBasicParsing
     )
 
-    # Temporarily suppress the progress preference
-    $oldPP = $ProgressPreference
+    # Suppress progress
+    $oldProgress = $ProgressPreference
     $ProgressPreference = 'SilentlyContinue'
 
     try {
-        # Log start to host with timestamp
-        Write-Host "$(Get-Date -Format 'HH:mm:ss')  Starting download: $Uri"
+        $time = Get-Date -Format 'HH:mm:ss'
+        Write-Host "$time  Starting download: $Uri"
 
-        # Perform the web request with basic parsing
-        $response = Invoke-WebRequest `
-            -Uri $Uri `
-            -UseBasicParsing `
-            -TimeoutSec $TimeoutSec
+        # Build parameter hashtable for Invoke-WebRequest
+        $invokeParams = @{
+            Uri        = $Uri
+            TimeoutSec = $TimeoutSec
+        }
+        if ($UseBasicParsing) {
+            $invokeParams.UseBasicParsing = $true
+            Write-Host "$time  Using Basic Parsing" -ForegroundColor Yellow
+        }
 
+        # Perform web request and get raw stream
+        $response = Invoke-WebRequest @invokeParams
         $inStream  = $response.RawContentStream
         $outStream = [System.IO.File]::OpenWrite($OutFile)
 
-        # Compute buffer size in bytes
+        # Buffer setup
         $bufferSize = $BufferSizeMB * 1MB
         $buffer     = New-Object byte[] $bufferSize
 
-        # Stream loop
+        # Stream data
         while (($read = $inStream.Read($buffer, 0, $bufferSize)) -gt 0) {
             $outStream.Write($buffer, 0, $read)
         }
 
-        # Log completion
-        Write-Host "$(Get-Date -Format 'HH:mm:ss')  Download complete: $OutFile"
+        $time = Get-Date -Format 'HH:mm:ss'
+        Write-Host "$time  Download complete: $OutFile"
     }
     catch {
-        # Log error and rethrow
-        Write-Host "$(Get-Date -Format 'HH:mm:ss')  ERROR downloading $Uri to $($OutFile): $_" -ForegroundColor Red
+        $time = Get-Date -Format 'HH:mm:ss'
+        Write-Host "$time  ERROR downloading $Uri -> $($OutFile): $_" -ForegroundColor Red
         throw
     }
     finally {
-        # Clean up streams
         if ($inStream)  { $inStream.Dispose() }
         if ($outStream) { $outStream.Dispose() }
-        # Restore progress preference
-        $ProgressPreference = $oldPP
+        $ProgressPreference = $oldProgress
     }
 }
+
 
 
 
