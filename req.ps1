@@ -353,6 +353,7 @@ else {
     Write-Info "MSYS2 already installed (found '$($programFolder)\msys64')." -Color Cyan
 }
 
+Write-Info "Checking for llama installation..." -Color Yellow
 $binOutput = "C:\llama"
 
 if (-not (Test-Path -Path $binOutput -PathType Container)) {
@@ -360,32 +361,37 @@ if (-not (Test-Path -Path $binOutput -PathType Container)) {
     $msysInstallPath = Join-Path $env:LocalAppData 'Programs\msys64'
     $msysShellScript = """$msysInstallPath\msys2_shell.cmd"""
     $msysShellArgs = "-defterm -here -no-start -ucrt64 -shell bash -c"
-    $fullShellCommand = "& $msysShellScript $msysShellArgs"`
+    $fullShellCommand = "& $msysShellScript $msysShellArgs"
 
+    Write-Info "Installing dependencies via pacman..." -Color Cyan
     $bashCmdBaseInvoke = "pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-gcc git mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja"
-    Write-Output "$fullShellCommand '$bashCmdBaseInvoke'"
+    Write-Info "Executing: $bashCmdBaseInvoke" -Color Gray
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
 
+    Write-Info "Cloning llama.cpp repository..." -Color Cyan
     $bashCmdBaseInvoke = "git clone --recurse-submodules https://github.com/ggerganov/llama.cpp.git ""`$HOME/llama.cpp"""
-    Write-Output "$fullShellCommand '$bashCmdBaseInvoke'"
+    Write-Info "Executing: $bashCmdBaseInvoke" -Color Gray
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
 
-    $binOutput = "C:\llama"
     $binOutputBash = Convert-ToMsysPath -WindowsPath $binOutput
+
+    Write-Info "Configuring build with CMake..." -Color Cyan
     $bashCmdBaseInvoke = "cmake -S `$HOME/llama.cpp -B `$HOME/llama.cpp/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$binOutputBash -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_SERVER=ON"
-    Write-Output "$fullShellCommand '$bashCmdBaseInvoke'"
+    Write-Info "Executing: $bashCmdBaseInvoke" -Color Gray
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
 
+    Write-Info "Building llama.cpp..." -Color Cyan
     $bashCmdBaseInvoke = "cmake --build `$HOME/llama.cpp/build --config Release"
-    Write-Output "$fullShellCommand '$bashCmdBaseInvoke'"
+    Write-Info "Executing: $bashCmdBaseInvoke" -Color Gray
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
 
+    Write-Info "Installing llama.cpp..." -Color Cyan
     $bashCmdBaseInvoke = "cmake --install `$HOME/llama.cpp/build --config Release"
-    Write-Output "$fullShellCommand '$bashCmdBaseInvoke'"
+    Write-Info "Executing: $bashCmdBaseInvoke" -Color Gray
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
 
 } else {
-    Write-Info "Llama.cpp already present (found '$binOutput')." -Color Cyan
+    Write-Info "Llama.cpp already present (found '$binOutput')." -Color Green
 }
 
 
