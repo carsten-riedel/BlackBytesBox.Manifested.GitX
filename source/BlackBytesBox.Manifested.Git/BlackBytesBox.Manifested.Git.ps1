@@ -1327,7 +1327,6 @@ function Invoke-WebRequestEx {
         }
         if ($UseBasicParsing) {
             $invokeParams.UseBasicParsing = $true
-            Write-Host "$time  Using Basic Parsing" -ForegroundColor Yellow
         }
 
         # Perform web request and get raw stream

@@ -526,6 +526,10 @@ $activateScript = Join-Path $virtualEnvPath 'Scripts\Activate.ps1'
 Write-Info "[INFO] To activate this virtual environment later, run:" -Color Cyan
 Write-Info "    & '$activateScript'" -Color Gray
 
+Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
+Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
+Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/microsoft/Phi-4-mini-instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels'
+
 #Invoke-RestMethod -Uri https://raw.githubusercontent.com/carsten-riedel/BlackBytesBox.Manifested.GitX/refs/heads/main/req.ps1 | Invoke-Expression
 
 
