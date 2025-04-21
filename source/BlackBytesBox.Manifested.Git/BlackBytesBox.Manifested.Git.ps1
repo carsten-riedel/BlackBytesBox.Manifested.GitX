@@ -1777,7 +1777,7 @@ function Sync-GitRepoFiles {
         $destDir = Split-Path $localPath -Parent
         if (-not (Test-Path $destDir)) { New-Item -Path $destDir -ItemType Directory -Force | Out-Null }
         Write-Host "File not present, will download: $fileName"
-        Invoke-WebRequest -Uri $info.DownloadUrl -OutFile $localPath -UseBasicParsing
+        Invoke-WebRequestEx -Uri $info.DownloadUrl -OutFile $localPath -UseBasicParsing
         [System.IO.File]::SetLastWriteTimeUtc($localPath, $info.Timestamp)
         Write-Host "Downloaded and timestamp set: $fileName`n"
     }
@@ -1787,7 +1787,7 @@ function Sync-GitRepoFiles {
         $info = $Metadata.Files[$fileName]
         $localPath = Join-Path $targetDir $fileName
         Write-Host "Out-of-date (timestamp mismatch), will re-download: $fileName"
-        Invoke-WebRequest -Uri $info.DownloadUrl -OutFile $localPath -UseBasicParsing
+        Invoke-WebRequestEx -Uri $info.DownloadUrl -OutFile $localPath -UseBasicParsing
         [System.IO.File]::SetLastWriteTimeUtc($localPath, $info.Timestamp)
         Write-Host "Downloaded and timestamp set: $fileName`n"
     }
