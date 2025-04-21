@@ -472,24 +472,6 @@ if (-not (Test-Path -Path $programFolderLlamaCpp -PathType Container)) {
     Write-Info "Llama.cpp already present (found '$programFolderLlamaCpp')." -Color Green
 }
 
-<#
-$pythoncmd = "python"
-$pythonargs = "-m"
-$pythonVirtualEnv = "C:\PythonVirtualEnv"
-$fullShellCommand = "& $pythoncmd $pythonargs"
-Write-Output $fullShellCommand
-Invoke-Expression "$fullShellCommand venv $pythonVirtualEnv"
-
-$pythoncmd = "$pythonVirtualEnv\Scripts\python.exe"
-$fullShellCommand = "& $pythoncmd $pythonargs"
-
-Invoke-Expression "$fullShellCommand pip install --upgrade pip wheel setuptools"
-Invoke-Expression "$fullShellCommand pip install torch transformers peft datasets safetensors"
-Invoke-Expression "$fullShellCommand pip install --upgrade -r $programFolderMsys2\home\$($env:Username)\llama.cpp\requirements\requirements-convert_hf_to_gguf.txt"
-#>
-
-# PowerShell Python + VirtualEnv Setup (nested checks, single top-level guard)
-
 Write-Info "[INFO] Checking for Python executable in PATH..." -Color Cyan
 if (Get-Command python -ErrorAction SilentlyContinue) {
     Write-Info "[OK] Found Python: 'python'. Proceeding with environment setup..." -Color Green
@@ -497,8 +479,8 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
     # Define variables
     $pythonCommand      = "python"
     $pythonModuleSwitch = "-m"
-    $virtualEnvPath     = "C:\\PythonVirtualEnv"
-    $venvExecutable     = Join-Path $virtualEnvPath 'Scripts\\python.exe'
+    $virtualEnvPath     = "C:\PythonVirtualEnv"
+    $venvExecutable     = Join-Path $virtualEnvPath 'Scripts\python.exe'
 
     # Function to invoke python module commands
     function Invoke-VenvCommand {
@@ -536,7 +518,7 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
     }
 
     # Print manual activation instruction
-    $activateScript = Join-Path $virtualEnvPath 'Scripts\\Activate.ps1'
+    $activateScript = Join-Path $virtualEnvPath 'Scripts\Activate.ps1'
     Write-Info "[INFO] To activate this virtual environment later, run:" -Color Cyan
     Write-Info "    & '$activateScript'" -Color Gray
 
