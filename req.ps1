@@ -535,6 +535,11 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
         Write-Info "[WARN] No conversion requirements file found; skipping." -Color Yellow
     }
 
+    # Print manual activation instruction
+    $activateScript = Join-Path $virtualEnvPath 'Scripts\\Activate.ps1'
+    Write-Info "[INFO] To activate this virtual environment later, run:" -Color Cyan
+    Write-Info "    & '$activateScript'" -Color Gray
+
 } else {
     Write-Info "[ERROR] 'python' not found in PATH. Please install Python or adjust the script." -Color Red
 }
