@@ -386,9 +386,9 @@ else {
 Write-Info "Checking for llama installation..." -Color Yellow
 
 # Check for llama.cpp installation by looking for the 'llama.cpp' folder
-$programFolder = Join-Path $env:LocalAppData 'Programs\llama.cpp'
+$programFolderLlamaCpp = Join-Path $env:LocalAppData 'Programs\llama.cpp'
 
-if (-not (Test-Path -Path $programFolder -PathType Container)) {
+if (-not (Test-Path -Path $programFolderLlamaCpp -PathType Container)) {
 
     $msysInstallPath = Join-Path $env:LocalAppData 'Programs\msys64'
     $msysShellScript = """$msysInstallPath\msys2_shell.cmd"""
@@ -405,7 +405,7 @@ if (-not (Test-Path -Path $programFolder -PathType Container)) {
     Write-Info "Executing: $bashCmdBaseInvoke" -Color Gray
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
 
-    $binOutputBash = Convert-ToMsysPath -WindowsPath $binOutput
+    $binOutputBash = Convert-ToMsysPath -WindowsPath $programFolderLlamaCpp
 
     Write-Info "Configuring build with CMake..." -Color Cyan
     $bashCmdBaseInvoke = "cmake -S `$HOME/llama.cpp -B `$HOME/llama.cpp/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$binOutputBash -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_SERVER=ON"
@@ -427,10 +427,10 @@ if (-not (Test-Path -Path $programFolder -PathType Container)) {
     Write-Info "Executing: $bashCmdBaseInvoke" -Color Gray
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
 
-    Add-ToUserPathIfMissing -Paths "$programFolder\bin"
+    Add-ToUserPathIfMissing -Paths "$programFolderLlamaCpp\bin"
 
 } else {
-    Write-Info "Llama.cpp already present (found '$binOutput')." -Color Green
+    Write-Info "Llama.cpp already present (found '$programFolderLlamaCpp')." -Color Green
 }
 
 
