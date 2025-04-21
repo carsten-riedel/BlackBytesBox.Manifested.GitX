@@ -384,9 +384,10 @@ else {
 
 # Check for MSYS2 installation by looking for the 'msys64' folder
 $programFolder = Join-Path $env:LocalAppData 'Programs'
+$programFolderMsys2 = Join-Path $programFolder 'msys64'
 
 # If the MSYS2 'msys64' folder doesn't exist, install
-if (-not (Test-Path -Path (Join-Path $programFolder 'msys64') -PathType Container)) {
+if (-not (Test-Path -Path $programFolderMsys2 -PathType Container)) {
     Write-Info "MSYS2 not found. Starting installation..." -Color Yellow
 
     # Use the system temp directory for downloads and cleanup
@@ -418,7 +419,7 @@ if (-not (Test-Path -Path (Join-Path $programFolder 'msys64') -PathType Containe
     Write-Info "Cleaned up temporary folder: $tempFolder" -Color Green
 }
 else {
-    Write-Info "MSYS2 already installed (found '$($programFolder)\msys64')." -Color Cyan
+    Write-Info "MSYS2 already installed (found '$($programFolderMsys2)')." -Color Cyan
 }
 
 Write-Info "Checking for llama installation..." -Color Yellow
@@ -471,7 +472,7 @@ if (-not (Test-Path -Path $programFolderLlamaCpp -PathType Container)) {
     Write-Info "Llama.cpp already present (found '$programFolderLlamaCpp')." -Color Green
 }
 
-
+<#
 $pythoncmd = "python"
 $pythonargs = "-m"
 $pythonVirtualEnv = "C:\PythonVirtualEnv"
@@ -484,8 +485,60 @@ $fullShellCommand = "& $pythoncmd $pythonargs"
 
 Invoke-Expression "$fullShellCommand pip install --upgrade pip wheel setuptools"
 Invoke-Expression "$fullShellCommand pip install torch transformers peft datasets safetensors"
-$programFolderMs = Join-Path $env:LocalAppData 'Programs\msys64'
-Invoke-Expression "$fullShellCommand pip install --upgrade -r $programFolderMs\home\$($env:Username)\llama.cpp\requirements\requirements-convert_hf_to_gguf.txt"
+Invoke-Expression "$fullShellCommand pip install --upgrade -r $programFolderMsys2\home\$($env:Username)\llama.cpp\requirements\requirements-convert_hf_to_gguf.txt"
+#>
+
+# PowerShell Python + VirtualEnv Setup (nested checks, single top-level guard)
+
+Write-Info "[INFO] Checking for Python executable in PATH..." -Color Cyan
+if (Get-Command python -ErrorAction SilentlyContinue) {
+    Write-Info "[OK] Found Python: 'python'. Proceeding with environment setup..." -Color Green
+
+    # Define variables
+    $pythonCommand      = "python"
+    $pythonModuleSwitch = "-m"
+    $virtualEnvPath     = "C:\\PythonVirtualEnv"
+    $venvExecutable     = Join-Path $virtualEnvPath 'Scripts\\python.exe'
+
+    # Function to invoke python module commands
+    function Invoke-VenvCommand {
+        param(
+            [string]$ModuleArgs
+        )
+        Invoke-Expression "& $venvExecutable $pythonModuleSwitch $ModuleArgs"
+    }
+
+    # Virtual environment creation
+    Write-Info "[INFO] Checking for virtual environment at '$virtualEnvPath'..." -Color Cyan
+    if (-not (Test-Path -Path $virtualEnvPath -PathType Container)) {
+        Write-Info "[INFO] Creating virtual environment at '$virtualEnvPath'..." -Color Cyan
+        & $pythonCommand $pythonModuleSwitch "venv $virtualEnvPath"
+    } else {
+        Write-Info "[OK] Virtual environment already exists at '$virtualEnvPath'." -Color Green
+    }
+
+    # Upgrade pip & tooling
+    Write-Info "[INFO] Upgrading pip, wheel, and setuptools..." -Color Cyan
+    Invoke-VenvCommand "pip install --upgrade pip wheel setuptools"
+
+    # Install core Python packages
+    Write-Info "[INFO] Installing core packages: torch, transformers, peft, datasets, safetensors..." -Color Cyan
+    Invoke-VenvCommand "pip install torch transformers peft datasets safetensors"
+
+    # Install conversion requirements if available
+    $conversionReqFile = Join-Path $programFolderLlamaCpp "requirements\\requirements-convert_hf_to_gguf.txt"
+    Write-Info "[INFO] Checking for conversion requirements file at '$conversionReqFile'..." -Color Cyan
+    if (Test-Path -Path $conversionReqFile) {
+        Write-Info "[INFO] Installing conversion requirements from '$conversionReqFile'..." -Color Cyan
+        Invoke-VenvCommand "pip install --upgrade -r `"$conversionReqFile`""
+    } else {
+        Write-Info "[WARN] No conversion requirements file found; skipping." -Color Yellow
+    }
+
+} else {
+    Write-Info "[ERROR] 'python' not found in PATH. Please install Python or adjust the script." -Color Red
+}
+
 
 #Invoke-RestMethod -Uri https://raw.githubusercontent.com/carsten-riedel/BlackBytesBox.Manifested.GitX/refs/heads/main/req.ps1 | Invoke-Expression
 
