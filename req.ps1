@@ -494,7 +494,7 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
     Write-Info "[INFO] Checking for virtual environment at '$virtualEnvPath'..." -Color Cyan
     if (-not (Test-Path -Path $virtualEnvPath -PathType Container)) {
         Write-Info "[INFO] Creating virtual environment at '$virtualEnvPath'..." -Color Cyan
-        & $pythonCommand $pythonModuleSwitch venv $virtualEnvPath
+        & $pythonCommand $pythonModuleSwitch venv "$virtualEnvPath"
     } else {
         Write-Info "[OK] Virtual environment already exists at '$virtualEnvPath'." -Color Green
     }
