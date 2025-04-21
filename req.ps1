@@ -97,6 +97,44 @@ function Add-ToUserPathIfMissing {
     }
 }
 
+<#
+.SYNOPSIS
+    Adds or updates a user environment variable with optional overwrite control.
+.DESCRIPTION
+    Sets the specified environment variable at the User level and in the current session.
+    If Overwrite is not set, the variable is only added if it does not already exist.
+.PARAMETER Name
+    The name of the environment variable to set.
+.PARAMETER Value
+    The value to assign to the environment variable.
+.PARAMETER Overwrite
+    If specified, overwrites the existing variable value.
+.EXAMPLE
+    Add-ToUserEnvarIfMissing -Name "MY_VAR" -Value "SomeValue" -Overwrite
+#>
+function Add-ToUserEnvarIfMissing {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Value,
+
+        [switch]$Overwrite
+    )
+
+    $userExisting = [Environment]::GetEnvironmentVariable($Name, 'User')
+    $procExisting = [Environment]::GetEnvironmentVariable($Name, 'Process')
+
+    if ($Overwrite -or [string]::IsNullOrEmpty($userExisting)) {
+        [Environment]::SetEnvironmentVariable($Name, $Value, 'User')
+    }
+
+    if ($Overwrite -or [string]::IsNullOrEmpty($procExisting)) {
+        [Environment]::SetEnvironmentVariable($Name, $Value, 'Process')
+    }
+}
+
 # Begin script
 Write-Info -Message 'Starting script execution...'
 
@@ -434,6 +472,20 @@ if (-not (Test-Path -Path $programFolderLlamaCpp -PathType Container)) {
 }
 
 
+$pythoncmd = "python"
+$pythonargs = "-m"
+$pythonVirtualEnv = "C:\PythonVirtualEnv"
+$fullShellCommand = "& $pythoncmd $pythonargs"
+Write-Output $fullShellCommand
+Invoke-Expression "$fullShellCommand venv $pythonVirtualEnv"
+
+$pythoncmd = "$pythonVirtualEnv\Scripts\python.exe"
+$fullShellCommand = "& $pythoncmd $pythonargs"
+
+Invoke-Expression "$fullShellCommand pip install --upgrade pip wheel setuptools"
+Invoke-Expression "$fullShellCommand pip install torch transformers peft datasets safetensors"
+$programFolderMs = Join-Path $env:LocalAppData 'Programs\msys64'
+Invoke-Expression "$fullShellCommand pip install --upgrade -r $programFolderMs\home\$($env:Username)\llama.cpp\requirements\requirements-convert_hf_to_gguf.txt"
 
 #Invoke-RestMethod -Uri https://raw.githubusercontent.com/carsten-riedel/BlackBytesBox.Manifested.GitX/refs/heads/main/req.ps1 | Invoke-Expression
 
