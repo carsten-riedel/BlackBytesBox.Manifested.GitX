@@ -515,11 +515,13 @@ $process.WaitForExit()
 
 # Display captured output and errors in the current session
 if ($output) {
-    $output.Trim() | ForEach-Object { Write-Host $_ }
+    $outputLines = $output.Split("`n") | ForEach-Object { $_.TrimEnd() } | Where-Object { $_ -ne '' }
+    $outputLines | ForEach-Object { Write-Info -Message $_ -Color Yellow }
 }
 if ($errorOutput) {
-    Write-Host "Errors:" -ForegroundColor Red
-    $errorOutput.Trim() | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+    Write-Host -Message "Errors:" -Color Red
+    $errorLines = $errorOutput.Split("`n") | ForEach-Object { $_.TrimEnd() } | Where-Object { $_ -ne '' }
+    $errorLines | ForEach-Object { Write-Info -Message $_ -Color Red }
 }
 
 
