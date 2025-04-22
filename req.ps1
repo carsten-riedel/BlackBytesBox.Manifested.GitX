@@ -376,6 +376,13 @@ function Add-ToUserEnvarIfMissing {
     }
 }
 
+function Reset-Module {
+    param([string]$Name)
+    Remove-Module -Name $Name -Force
+    Update-Module -Name $Name
+    Import-Module -Name $Name -Force
+}
+
 # Begin script
 Write-Info -Message 'Starting script execution...'
 
@@ -491,6 +498,8 @@ catch {
     exit 1
 }
 
+
+Reset-Module -Name 'PowerShellGet'
 Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Initialize'
 Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Git'
 
