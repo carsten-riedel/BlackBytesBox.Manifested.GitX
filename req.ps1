@@ -392,7 +392,7 @@ $WriteLogInlineDefaults = @{
 
 
 # Begin script
-Write-LogInline -Level Information -Template "Starting script execution..." @WriteLogInlineDefaults
+Write-LogInline -Level Information -Template "Script execution has started." @WriteLogInlineDefaults
 
 try {
     Write-LogInline -Level Information -Template "Checking current execution policy..." @WriteLogInlineDefaults
@@ -402,7 +402,7 @@ try {
 
     $allowed = @('RemoteSigned', 'Unrestricted', 'Bypass')
     if ($allowed -contains $currentPolicy) {
-        Write-LogInline -Level Information -Template "Execution policy already allows script/module execution. No change needed." @WriteLogInlineDefaults
+        Write-LogInline -Level Information -Template "Execution policy is already set appropriately. Skipping changes." @WriteLogInlineDefaults
     }
     else {
         Write-LogInline -Level Information -Template "Setting execution policy to RemoteSigned to allow scripts/modules..." @WriteLogInlineDefaults
@@ -411,7 +411,7 @@ try {
     }
 }
 catch {
-    Write-LogInline -Level Error -Template "ERROR: Failed to configure execution policy. $_" @WriteLogInlineDefaults
+    Write-LogInline -Level Error -Template "Failed to configure execution policy. $_" @WriteLogInlineDefaults
     exit 1
 }
 
@@ -435,7 +435,7 @@ try {
     }
 }
 catch {
-    Write-LogInline -Level Error -Template "ERROR: Failed to install or verify NuGet Package Provider. $_" @WriteLogInlineDefaults
+    Write-LogInline -Level Error -Template "Failed to install or verify NuGet Package Provider. $_" @WriteLogInlineDefaults
     exit 1
 }
 
@@ -461,7 +461,7 @@ try {
     }
 }
 catch {
-    Write-LogInline -Level Error -Template "ERROR: Failed to verify/register/trust PSGallery. $_" @WriteLogInlineDefaults
+    Write-LogInline -Level Error -Template "Failed to verify/register/trust PSGallery. $_" @WriteLogInlineDefaults
     exit 1
 }
 
@@ -486,7 +486,7 @@ try {
     }
 }
 catch {
-    Write-LogInline -Level Error -Template 'ERROR: Failed to update PowerShellGet module. {0}' -Params $_ @WriteLogInlineDefaults
+    Write-LogInline -Level Error -Template 'Failed to update PowerShellGet module. {0}' -Params $_ @WriteLogInlineDefaults
     exit 1
 }
 
@@ -498,7 +498,7 @@ try {
     Write-LogInline -Level Information -Template '{0} module installed successfully.' -Params "BlackBytesBox.Manifested.Initialize" @WriteLogInlineDefaults
 }
 catch {
-    Write-LogInline -Level Error -Template 'ERROR: Failed to install BlackBytesBox.Manifested.Initialize module. {0}' -Params $_ @WriteLogInlineDefaults
+    Write-LogInline -Level Error -Template 'Failed to install BlackBytesBox.Manifested.Initialize module. {0}' -Params $_ @WriteLogInlineDefaults
     exit 1
 }
 
@@ -508,7 +508,7 @@ try {
     Write-LogInline -Level Information -Template '{0} module installed successfully.' -Params "BlackBytesBox.Manifested.Git" @WriteLogInlineDefaults
 }
 catch {
-    Write-LogInline -Level Error -Template 'ERROR: Failed to install BlackBytesBox.Manifested.Git module. {0}' -Params $_ @WriteLogInlineDefaults
+    Write-LogInline -Level Error -Template 'Failed to install BlackBytesBox.Manifested.Git module. {0}' -Params $_ @WriteLogInlineDefaults
     exit 1
 }
 
@@ -553,12 +553,11 @@ if (Test-IsWindows) {
     Write-LogInline -Level Information -Template 'Detected Windows OS. Proceeding with installation...' @WriteLogInlineDefaults
 }
 else {
-    Write-Info -Message 'Non-Windows OS detected. Exiting script.' -Color Red
-    Write-LogInline -Level Warning -Template 'Non-Windows OS detected. Exiting script.' @WriteLogInlineDefaults
+    Write-LogInline -Level Warning -Template 'Script is not supported on non-Windows OS. Exiting.' @WriteLogInlineDefaults
     exit 1
 }
 
-Write-LogInline -Level Information -Template 'Checking for existing git ...' @WriteLogInlineDefaults
+Write-LogInline -Level Information -Template 'Verifying Git installation status...' @WriteLogInlineDefaults
 
 # Only download MinGit if git.exe isn’t already on the PATH
 if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
@@ -618,7 +617,7 @@ if ($currentUserPath -like "*$storeShim*") {
     Write-LogInline -Level Information -Template 'Removed Windows Store shim from user profile PATH: {storeShim}' -Params $storeShim @WriteLogInlineDefaults
 }
 
-Write-LogInline -Level Information -Template 'Checking for existing Python ...' @WriteLogInlineDefaults
+Write-LogInline -Level Information -Template 'Verifying Python installation status...' @WriteLogInlineDefaults
 
 # Check for python.exe / install pyenv-win
 if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-Command python -ErrorAction SilentlyContinue)) {
@@ -684,7 +683,7 @@ else {
     Write-LogInline -Level Information -Template 'Python is already available at {pyPath}. Skipping pyenv-win setup.' -Params $pyPath @WriteLogInlineDefaults
 }
 
-Write-LogInline -Level Information -Template 'Checking for existing msys64 ...' @WriteLogInlineDefaults
+Write-LogInline -Level Information -Template 'Verifying MSYS2 installation status...' @WriteLogInlineDefaults
 
 # Check for MSYS2 installation by looking for the 'msys64' folder
 $programFolder = Join-Path $env:LocalAppData 'Programs'
@@ -726,7 +725,7 @@ else {
     Write-LogInline -Level Information -Template 'MSYS2 already installed (found {programFolderMsys2}).' -Params $programFolderMsys2 @WriteLogInlineDefaults
 }
 
-Write-Info "Checking for llama installation..." -Color Yellow
+Write-LogInline -Level Information -Template 'Verifying llama.cpp installation status...' @WriteLogInlineDefaults
 
 # Check for llama.cpp installation by looking for the 'llama.cpp' folder
 $programFolderLlamaCpp = Join-Path $env:LocalAppData 'Programs\llama.cpp'
@@ -773,17 +772,18 @@ if (-not (Test-Path -Path $programFolderLlamaCpp -PathType Container)) {
     Add-ToUserPathIfMissing -Paths "$programFolderLlamaCpp\bin"
 
 } else {
-    Write-Info "Llama.cpp already present (found '$programFolderLlamaCpp')." -Color Green
+    Write-LogInline -Level Information -Template 'Llama.cpp already present (found {programFolderLlamaCpp}).' -Params $programFolderLlamaCpp @WriteLogInlineDefaults
 }
 
-Write-Info "[INFO] Checking for Python executable in PATH..." -Color Cyan
+Write-LogInline -Level Information -Template 'Verifying Python installation status...' @WriteLogInlineDefaults
+
 if (Get-Command python -ErrorAction SilentlyContinue) {
-    Write-Info "[OK] Found Python: 'python'. Proceeding with environment setup..." -Color Green
+    Write-LogInline -Level Information -Template 'Found Python. Proceeding with environment setup...' @WriteLogInlineDefaults
 
     # Define variables
     $pythonCommand      = "python"
     $pythonModuleSwitch = "-m"
-    $virtualEnvPath     = "C:\PythonVirtualEnv"
+    $virtualEnvPath     = Join-Path $env:Userprofile 'PythonVirtualEnvironment'
     $venvExecutable     = Join-Path $virtualEnvPath 'Scripts\python.exe'
 
     # Function to invoke python module commands
@@ -791,44 +791,46 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
         param(
             [string]$ModuleArgs
         )
-        Invoke-Expression "& $venvExecutable $pythonModuleSwitch $ModuleArgs"
+        Invoke-Expression "& $venvExecutable $pythonModuleSwitch $ModuleArgs" | Out-Null
     }
 
     # Virtual environment creation
-    Write-Info "[INFO] Checking for virtual environment at '$virtualEnvPath'..." -Color Cyan
+    
+    Write-LogInline -Level Information -Template 'Checking for virtual environment at {virtualEnvPath}...' -Params $virtualEnvPath @WriteLogInlineDefaults
     if (-not (Test-Path -Path $virtualEnvPath -PathType Container)) {
-        Write-Info "[INFO] Creating virtual environment at '$virtualEnvPath'..." -Color Cyan
+        Write-LogInline -Level Information -Template 'Creating virtual environment at {virtualEnvPath}...' -Params $virtualEnvPath @WriteLogInlineDefaults
         & $pythonCommand $pythonModuleSwitch venv "$virtualEnvPath"
     } else {
-        Write-Info "[OK] Virtual environment already exists at '$virtualEnvPath'." -Color Green
+        Write-LogInline -Level Information -Template 'Virtual environment already exists at {virtualEnvPath}.' -Params $virtualEnvPath @WriteLogInlineDefaults
     }
 
     # Upgrade pip & tooling
-    Write-Info "[INFO] Upgrading pip, wheel, and setuptools..." -Color Cyan
+    Write-LogInline -Level Information -Template 'Upgrading pip, wheel, and setuptools...' @WriteLogInlineDefaults
     Invoke-VenvCommand "pip install --upgrade pip wheel setuptools"
 
     # Install core Python packages
-    Write-Info "[INFO] Installing core packages: torch, transformers, peft, datasets, safetensors..." -Color Cyan
+    Write-LogInline -Level Information -Template 'Installing core packages: torch, transformers, peft, datasets, safetensors...' @WriteLogInlineDefaults
     Invoke-VenvCommand "pip install torch transformers peft datasets safetensors"
 
     # Install conversion requirements if available
     $conversionReqFile = Join-Path $programFolderMsys2 "home\$($env:Username)\llama.cpp\requirements\requirements-convert_hf_to_gguf.txt"
-    Write-Info "[INFO] Checking for conversion requirements file at '$conversionReqFile'..." -Color Cyan
+    Write-LogInline -Level Information -Template 'Checking for conversion requirements file at {conversionReqFile}...' -Params $conversionReqFile @WriteLogInlineDefaults
     if (Test-Path -Path $conversionReqFile) {
-        Write-Info "[INFO] Installing conversion requirements from '$conversionReqFile'..." -Color Cyan
+        Write-LogInline -Level Information -Template 'Installing conversion requirements from {conversionReqFile}...' -Params $conversionReqFile @WriteLogInlineDefaults
         Invoke-VenvCommand "pip install --upgrade -r `"$conversionReqFile`""
     } else {
-        Write-Info "[WARN] No conversion requirements file found; skipping." -Color Yellow
+        Write-LogInline -Level Warning -Template 'No conversion requirements file found. Skipping.' @WriteLogInlineDefaults
     }
 
 } else {
-    Write-Info "[ERROR] 'python' not found in PATH. Please install Python or adjust the script." -Color Red
+    Write-LogInline -Level Error -Template "'python' not found in PATH. Please install Python or adjust the script." @WriteLogInlineDefaults
 }
 
 # Print manual activation instruction
 $activateScript = Join-Path $virtualEnvPath 'Scripts\Activate.ps1'
-Write-Info "[INFO] To activate this virtual environment later, run:" -Color Cyan
-Write-Info "    & '$activateScript'" -Color Gray
+Write-LogInline -Level Information -Template "To activate this virtual environment later, run:" @WriteLogInlineDefaults
+Write-LogInline -Level Information -Template "    & '$activateScript'" @WriteLogInlineDefaults
+
 
 Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
 #Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
@@ -843,7 +845,7 @@ $WriteLogInlineDefaults = @{
     ReturnJson    = $false
 }
 
-Write-LogInline -Level Information -Template "Finished processing {Script} !" -Params "req.ps1" @WriteLogInlineDefaults
+Write-LogInline -Level Information -Template "Script {Script} has finished processing." -Params "req.ps1" @WriteLogInlineDefaults
 
 #Invoke-RestMethod -Uri https://raw.githubusercontent.com/carsten-riedel/BlackBytesBox.Manifested.GitX/refs/heads/main/req.ps1 | Invoke-Expression
 #
