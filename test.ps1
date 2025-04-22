@@ -302,7 +302,7 @@ $WriteLogInlineDefaults = @{
     ReturnJson    = $false
 }
 
-Write-LogInline -Level Information -Template "Finished processing {script} !" -Params "req.ps1" @WriteLogInlineDefaults
+Write-LogInline -Level Information -Template "Finished processing {Script} !" -Params "req.ps1" @WriteLogInlineDefaults
 
 Write-LogInline -Level Verbose -Template "{hello}-{world} number {num} at {time} !" -Params "Hello","World",1, 1.2 @WriteLogInlineDefaults -InitialWrite
 Start-Sleep -Seconds 2
