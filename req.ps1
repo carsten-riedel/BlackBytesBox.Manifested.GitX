@@ -376,13 +376,6 @@ function Add-ToUserEnvarIfMissing {
     }
 }
 
-function Reset-Module {
-    param([string]$Name)
-    Remove-Module -Name $Name -Force
-    Update-Module -Name $Name
-    Import-Module -Name $Name -Force
-}
-
 # Begin script
 Write-Info -Message 'Starting script execution...'
 
@@ -499,9 +492,21 @@ catch {
 }
 
 
-Reset-Module -Name 'PowerShellGet'
-Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Initialize'
-Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Git'
+# Define your cleanup block as before
+$cleanupScript = {
+    Remove-Module PowerShellGet -Force
+    Import-Module PowerShellGet -Force
+    Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Initialize'
+    Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Git'
+}
+
+# Launch a new Windows PowerShell 5.1 process
+Start-Process powershell.exe -ArgumentList @(
+    '-NoProfile',
+    '-ExecutionPolicy','Bypass',
+    '-Command', $cleanupScript.ToString()
+) -Wait
+
 
 # Detect OS and bail if not Windows
 if (Test-IsWindows) {
