@@ -111,7 +111,7 @@ function Write-LogInline {
     # Timestamp and render
     $Params = @($Params)
     $timeEntry = Get-Date
-    $timeStr   = $timeEntry.ToString('yyyy-MM-dd HH:mm:ss:fff')
+    $timeStr   = $timeEntry.ToString('yyyy-MM-dd HH:mm:ss:ff')
     $plMatches = [regex]::Matches($Template, '{(?<name>\w+)}')
     $keys      = $plMatches | ForEach-Object { $_.Groups['name'].Value } | Select-Object -Unique
     $keys = @($keys)
