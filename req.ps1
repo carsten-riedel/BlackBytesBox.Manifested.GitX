@@ -496,14 +496,33 @@ catch {
 $cleanupScript = {
     Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Initialize'
     Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Git'
+    Write-Output "Cleanup completed."
 }
 
-# Launch a new Windows PowerShell 5.1 process in hidden window
-Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @(
-    '-NoProfile',
-    '-ExecutionPolicy','Bypass',
-    '-Command', $cleanupScript.ToString()
-) -Wait
+# Prepare PowerShell process start info for in-memory output capture
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = 'powershell.exe'
+$psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -Command $($cleanupScript.ToString())"
+$psi.RedirectStandardOutput = $true
+$psi.RedirectStandardError = $true
+$psi.UseShellExecute = $false
+$psi.CreateNoWindow = $true
+
+# Start the process and capture output
+$process = [System.Diagnostics.Process]::Start($psi)
+$output = $process.StandardOutput.ReadToEnd()
+$errorOutput = $process.StandardError.ReadToEnd()
+$process.WaitForExit()
+
+# Display captured output and errors in the current session
+if ($output) {
+    $output.Trim() | ForEach-Object { Write-Host $_ }
+}
+if ($errorOutput) {
+    Write-Host "Errors:" -ForegroundColor Red
+    $errorOutput.Trim() | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+}
+
 
 
 
