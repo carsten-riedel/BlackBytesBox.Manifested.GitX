@@ -496,7 +496,6 @@ catch {
 $cleanupScript = {
     Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Initialize'
     Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Git'
-    Write-Output "Cleanup completed."
 }
 
 # Prepare PowerShell process start info for in-memory output capture
