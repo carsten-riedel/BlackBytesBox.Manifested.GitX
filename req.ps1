@@ -491,6 +491,9 @@ catch {
     exit 1
 }
 
+Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Initialize'
+Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Git'
+
 # Detect OS and bail if not Windows
 if (Test-IsWindows) {
     Write-Info -Message 'Detected Windows OS. Proceeding with MinGit installation...' -Color Cyan
