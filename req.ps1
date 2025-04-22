@@ -597,7 +597,7 @@ if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
 }
 else {
     $gitPath = (Get-Command git.exe).Source
-    Write-Info "$(Get-Date -Format 'HH:mm:ss')  Git is already available at $gitPath."
+    Write-LogInline -Level Information -Template 'Git is already available at {gitpath}' -Params $gitPath @WriteLogInlineDefaults
 }
 
 
@@ -607,7 +607,7 @@ $storeShim = Join-Path $env:LocalAppData 'Microsoft\WindowsApps'
 # Current session
 if ($env:Path -like "*$storeShim*") {
     $env:Path = ($env:Path -split ';' | Where-Object { $_ -ne $storeShim }) -join ';'
-    Write-Info -Message "Removed Windows Store shim from session PATH: $storeShim" -Color Yellow
+    Write-LogInline -Level Information -Template 'Removed Windows Store shim from current session PATH: {storeShim}' -Params $storeShim @WriteLogInlineDefaults
 }
 
 # Persisted user PATH
@@ -615,10 +615,10 @@ $currentUserPath = [Environment]::GetEnvironmentVariable('Path','User')
 if ($currentUserPath -like "*$storeShim*") {
     $newUserPath = ($currentUserPath -split ';' | Where-Object { $_ -ne $storeShim }) -join ';'
     [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
-    Write-Info -Message "Removed Windows Store shim from user PATH: $storeShim" -Color Yellow
+    Write-LogInline -Level Information -Template 'Removed Windows Store shim from user profile PATH: {storeShim}' -Params $storeShim @WriteLogInlineDefaults
 }
 
-# --- Remove Windows Store shim, detect OS, install MinGit… [omitted for brevity] ---
+Write-LogInline -Level Information -Template 'Checking for existing Python ...' @WriteLogInlineDefaults
 
 # Check for python.exe / install pyenv-win
 if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-Command python -ErrorAction SilentlyContinue)) {
@@ -681,9 +681,10 @@ else {
         $cmd = Get-Command python -ErrorAction SilentlyContinue
     }
     $pyPath = $cmd.Source
-    Write-Info -Message "Python is already available at $pyPath. Skipping pyenv-win setup." -Color Green
+    Write-LogInline -Level Information -Template 'Python is already available at {pyPath}. Skipping pyenv-win setup.' -Params $pyPath @WriteLogInlineDefaults
 }
 
+Write-LogInline -Level Information -Template 'Checking for existing msys64 ...' @WriteLogInlineDefaults
 
 # Check for MSYS2 installation by looking for the 'msys64' folder
 $programFolder = Join-Path $env:LocalAppData 'Programs'
@@ -722,7 +723,7 @@ if (-not (Test-Path -Path $programFolderMsys2 -PathType Container)) {
     Write-Info "Cleaned up temporary folder: $tempFolder" -Color Green
 }
 else {
-    Write-Info "MSYS2 already installed (found '$($programFolderMsys2)')." -Color Cyan
+    Write-LogInline -Level Information -Template 'MSYS2 already installed (found {programFolderMsys2}).' -Params $programFolderMsys2 @WriteLogInlineDefaults
 }
 
 Write-Info "Checking for llama installation..." -Color Yellow
