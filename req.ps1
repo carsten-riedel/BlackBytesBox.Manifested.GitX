@@ -80,7 +80,7 @@ function Write-LogInline {
     # ANSI escape
     $esc = [char]27
     if (-not $script:WLI_Caller) {
-        $script:WLI_Caller = if ($MyInvocation.PSCommandPath) { Split-Path -Leaf $MyInvocation.PSCommandPath } else { 'Console' }
+        $script:WLI_Caller = if ($MyInvocation.PSCommandPath) { Split-Path -Leaf $MyInvocation.PSCommandPath } else { 'Con' }
     }
     $caller = $script:WLI_Caller
 
