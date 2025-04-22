@@ -159,6 +159,9 @@ function Write-LogInline {
             'System.Int32'    = 'Cyan';    'System.Int64'     = 'Cyan'
             'System.Double'   = 'Blue';    'System.Decimal'   = 'Blue'
             'System.Boolean'  = 'Magenta'; 'Default'          = 'White'
+            'System.Version'  = 'Magenta'; 'Microsoft.PackageManagement.Internal.Utility.Versions.FourPartVersion' = 'Magenta'
+            'Microsoft.PowerShell.ExecutionPolicy' = 'Magenta'
+            
         }
         $staticFore = 'White'; $staticBack = 'Black'
         function Write-Colored { param($Text,$Fore,$Back) if ($UseBackColor -and $Back) { Write-Host -NoNewline $Text -ForegroundColor $Fore -BackgroundColor $Back } else { Write-Host -NoNewline $Text -ForegroundColor $Fore } }
@@ -376,118 +379,136 @@ function Add-ToUserEnvarIfMissing {
     }
 }
 
+Clear-Host
+
+$WriteLogInlineDefaults = @{
+    FileMinLevel  = 'Error'
+    MinLevel      = 'Information'
+    UseBackColor  = $false
+    Overwrite     = $false
+    FileAppName   = 'req.ps1'
+    ReturnJson    = $false
+}
+
+
 # Begin script
-Write-Info -Message 'Starting script execution...'
+Write-LogInline -Level Information -Template "Starting script execution..." @WriteLogInlineDefaults
 
 try {
-    Write-Info -Message 'Checking current execution policy...' -Color Yellow
+    Write-LogInline -Level Information -Template "Checking current execution policy..." @WriteLogInlineDefaults
 
     $currentPolicy = Get-ExecutionPolicy -Scope CurrentUser
-    Write-Info -Message "CurrentUser policy is '$currentPolicy'." -Color Cyan
+    Write-LogInline -Level Information -Template "CurrentUser policy is '{currentPolicy}'." -Params $currentPolicy @WriteLogInlineDefaults
 
     $allowed = @('RemoteSigned', 'Unrestricted', 'Bypass')
     if ($allowed -contains $currentPolicy) {
-        Write-Info -Message "Execution policy already allows script/module execution. No change needed." -Color Green
+        Write-LogInline -Level Information -Template "Execution policy already allows script/module execution. No change needed." @WriteLogInlineDefaults
     }
     else {
-        Write-Info -Message 'Setting execution policy to RemoteSigned to allow scripts/modules...' -Color Yellow
+        Write-LogInline -Level Information -Template "Setting execution policy to RemoteSigned to allow scripts/modules..." @WriteLogInlineDefaults
         Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-        Write-Info -Message 'Execution policy updated to RemoteSigned. Scripts and modules can now run.' -Color Green
+        Write-LogInline -Level Information -Template "Execution policy updated to RemoteSigned. Scripts and modules can now run." @WriteLogInlineDefaults
     }
 }
 catch {
-    Write-Info -Message "ERROR: Failed to configure execution policy. $_" -Color Red
+    Write-LogInline -Level Error -Template "ERROR: Failed to configure execution policy. $_" @WriteLogInlineDefaults
     exit 1
 }
 
 
 try {
-    Write-Info -Message 'Checking installed NuGet Package Provider version...' -Color Yellow
+    Write-LogInline -Level Information -Template 'Checking installed NuGet Package Provider version...' @WriteLogInlineDefaults
 
     # Attempt to get the installed provider
-    $provider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue |  Sort-Object Version -Descending | Select-Object -First 1
+    $provider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue |
+                Sort-Object Version -Descending |
+                Select-Object -First 1
 
     $minVersion = [Version]'2.8.5.201'
     if (-not $provider -or [Version]$provider.Version -lt $minVersion) {
-        Write-Info -Message "Installing/Updating NuGet Package Provider to at least version $minVersion..." -Color Yellow
+        Write-LogInline -Level Information -Template "Installing/Updating NuGet Package Provider to at least version {0}..." -Params $minVersion @WriteLogInlineDefaults
         Install-PackageProvider -Name NuGet -Force -MinimumVersion $minVersion -Scope CurrentUser | Out-Null
-        Write-Info -Message 'NuGet Package Provider installed/updated successfully.' -Color Green
+        Write-LogInline -Level Information -Template 'NuGet Package Provider installed/updated successfully.' @WriteLogInlineDefaults
     }
     else {
-        Write-Info -Message "NuGet Package Provider version $($provider.Version) is already >= $minVersion. No action needed." -Color Green
+        Write-LogInline -Level Information -Template "NuGet Package Provider version {0} is already >= {1}. No action needed." -Params @($provider.Version, $minVersion) @WriteLogInlineDefaults
     }
 }
 catch {
-    Write-Info -Message "ERROR: Failed to install or verify NuGet Package Provider. $_" -Color Red
+    Write-LogInline -Level Error -Template "ERROR: Failed to install or verify NuGet Package Provider. $_" @WriteLogInlineDefaults
     exit 1
 }
 
+
 try {
-    Write-Info -Message 'Checking for PSGallery repository...' -Color Yellow
+    Write-LogInline -Level Information -Template 'Checking for PSGallery repository...' @WriteLogInlineDefaults
 
     # Try to get PSGallery; don’t stop on error so we can test for null
     $repo = Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue
 
     if (-not $repo) {
-        Write-Info -Message 'PSGallery not found. Registering default PowerShell Gallery as trusted...' -Color Yellow
+        Write-LogInline -Level Information -Template 'PSGallery not found. Registering default PowerShell Gallery as trusted...' @WriteLogInlineDefaults
         Register-PSRepository -Default -InstallationPolicy Trusted
-        Write-Info -Message 'PSGallery registered and trusted.' -Color Green
+        Write-LogInline -Level Information -Template 'PSGallery registered and trusted.' @WriteLogInlineDefaults
     }
     elseif ($repo.InstallationPolicy -ne 'Trusted') {
-        Write-Info -Message 'PSGallery found but not trusted. Setting policy to Trusted...' -Color Yellow
+        Write-LogInline -Level Information -Template 'PSGallery found but not trusted. Setting policy to Trusted...' @WriteLogInlineDefaults
         Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-        Write-Info -Message 'PSGallery is now trusted.' -Color Green
+        Write-LogInline -Level Information -Template 'PSGallery is now trusted.' @WriteLogInlineDefaults
     }
     else {
-        Write-Info -Message 'PSGallery is already registered and trusted. No action needed.' -Color Green
+        Write-LogInline -Level Information -Template 'PSGallery is already registered and trusted. No action needed.' @WriteLogInlineDefaults
     }
 }
 catch {
-    Write-Info -Message "ERROR: Failed to verify/register/trust PSGallery. $_" -Color Red
+    Write-LogInline -Level Error -Template "ERROR: Failed to verify/register/trust PSGallery. $_" @WriteLogInlineDefaults
     exit 1
 }
 
 
 try {
-    Write-Info -Message 'Checking installed PowerShellGet module version...' -Color Yellow
+    Write-LogInline -Level Information -Template 'Checking installed PowerShellGet module version...' @WriteLogInlineDefaults
 
     # Get the highest available PowerShellGet version
-    $psg = Get-Module -ListAvailable -Name PowerShellGet | Sort-Object Version -Descending | Select-Object -First 1
+    $psg = Get-Module -ListAvailable -Name PowerShellGet |
+           Sort-Object Version -Descending |
+           Select-Object -First 1
 
     $minVersion = [Version]'2.2.5'
 
     if (-not $psg -or [Version]$psg.Version -lt $minVersion) {
-        Write-Info -Message "Updating PowerShellGet module to at least version $minVersion..." -Color Yellow
+        Write-LogInline -Level Information -Template 'Updating PowerShellGet module to at least version {0}...' -Params $minVersion @WriteLogInlineDefaults
         Install-Module -Name PowerShellGet -MinimumVersion $minVersion -Force -Scope CurrentUser -AllowClobber -WarningAction SilentlyContinue | Out-Null
-        Write-Info -Message 'PowerShellGet module updated successfully.' -Color Green
+        Write-LogInline -Level Information -Template 'PowerShellGet module updated successfully.' @WriteLogInlineDefaults
     }
     else {
-        Write-Info -Message "PowerShellGet version $($psg.Version) is already ≥ $minVersion. No update needed." -Color Green
+        Write-LogInline -Level Information -Template 'PowerShellGet version {0} is already ≥ {1}. No update needed.' -Params @($psg.Version, $minVersion) @WriteLogInlineDefaults
     }
 }
 catch {
-    Write-Info -Message "ERROR: Failed to update PowerShellGet module. $_" -Color Red
+    Write-LogInline -Level Error -Template 'ERROR: Failed to update PowerShellGet module. {0}' -Params $_ @WriteLogInlineDefaults
     exit 1
 }
 
 
+
 try {
-    Write-Info -Message 'Installing BlackBytesBox.Manifested.Initialize module...' -Color Yellow
+    Write-LogInline -Level Information -Template 'Installing {0} module...' -Params "BlackBytesBox.Manifested.Initialize" @WriteLogInlineDefaults
     Install-Module -Name BlackBytesBox.Manifested.Initialize -Scope CurrentUser -AllowClobber -Force -Repository PSGallery
-    Write-Info -Message 'BlackBytesBox.Manifested.Initialize module installed successfully.' -Color Green
+    Write-LogInline -Level Information -Template '{0} module installed successfully.' -Params "BlackBytesBox.Manifested.Initialize" @WriteLogInlineDefaults
 }
 catch {
-    Write-Info -Message "ERROR: Failed to install BlackBytesBox.Manifested.Initialize module. $_" -Color Red
+    Write-LogInline -Level Error -Template 'ERROR: Failed to install BlackBytesBox.Manifested.Initialize module. {0}' -Params $_ @WriteLogInlineDefaults
     exit 1
 }
 
 try {
-    Write-Info -Message 'Installing BlackBytesBox.Manifested.Git module...' -Color Yellow
+    Write-LogInline -Level Information -Template 'Installing {0} module...' -Params "BlackBytesBox.Manifested.Git" @WriteLogInlineDefaults
     Install-Module -Name BlackBytesBox.Manifested.Git -Scope CurrentUser -AllowClobber -Force -Repository PSGallery
-    Write-Info -Message 'BlackBytesBox.Manifested.Git module installed successfully.' -Color Green
+    Write-LogInline -Level Information -Template '{0} module installed successfully.' -Params "BlackBytesBox.Manifested.Git" @WriteLogInlineDefaults
 }
 catch {
-    Write-Info -Message "ERROR: Failed to install BlackBytesBox.Manifested.Git module. $_" -Color Red
+    Write-LogInline -Level Error -Template 'ERROR: Failed to install BlackBytesBox.Manifested.Git module. {0}' -Params $_ @WriteLogInlineDefaults
     exit 1
 }
 
@@ -516,12 +537,12 @@ $process.WaitForExit()
 # Display captured output and errors in the current session
 if ($output) {
     $outputLines = $output.Split("`n") | ForEach-Object { $_.TrimEnd() } | Where-Object { $_ -ne '' }
-    $outputLines | ForEach-Object { Write-Info -Message $_ -Color Yellow }
+    $outputLines | ForEach-Object { Write-LogInline -Level Information -Template "$_" @WriteLogInlineDefaults }
 }
 if ($errorOutput) {
-    Write-Host -Message "Errors:" -Color Red
+    Write-LogInline -Level Error -Template "Errors: " @WriteLogInlineDefaults
     $errorLines = $errorOutput.Split("`n") | ForEach-Object { $_.TrimEnd() } | Where-Object { $_ -ne '' }
-    $errorLines | ForEach-Object { Write-Info -Message $_ -Color Red }
+    $errorLines | ForEach-Object { Write-LogInline -Level Error -Template "$_" @WriteLogInlineDefaults }
 }
 
 
@@ -529,20 +550,25 @@ if ($errorOutput) {
 
 # Detect OS and bail if not Windows
 if (Test-IsWindows) {
-    Write-Info -Message 'Detected Windows OS. Proceeding with MinGit installation...' -Color Cyan
+    Write-LogInline -Level Information -Template 'Detected Windows OS. Proceeding with installation...' @WriteLogInlineDefaults
 }
 else {
     Write-Info -Message 'Non-Windows OS detected. Exiting script.' -Color Red
+    Write-LogInline -Level Warning -Template 'Non-Windows OS detected. Exiting script.' @WriteLogInlineDefaults
     exit 1
 }
+
+Write-LogInline -Level Information -Template 'Checking for existing git ...' @WriteLogInlineDefaults
 
 # Only download MinGit if git.exe isn’t already on the PATH
 if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
     # Set DownloadFolder to %LocalAppData%\Programs\Git
-    $downloadFolder = Join-Path $env:LocalAppData 'Programs\Git'
+    $downloadFolder = Join-Path $env:LocalAppData 'Programs\MinGit64'
+
+    Write-LogInline -Level Information -Template 'Downloading and extracting MinGit 64 bit ...' -Params $downloadFolder @WriteLogInlineDefaults
 
     # Invoke the release‑downloader for MinGit x64 (excluding busybox builds)
-    $result = Get-GitHubLatestRelease -RepoUrl 'https://github.com/git-for-windows/git' -Whitelist '*MinGit*','*64-bit*' -Blacklist '*busy*' -IncludeVersionFolder  -Extract -DownloadFolder $downloadFolder
+    $result = Get-GitHubLatestRelease -RepoUrl 'https://github.com/git-for-windows/git' -Whitelist '*MinGit*','*64-bit*' -Blacklist '*busy*' -IncludeVersionFolder -Extract -DownloadFolder $downloadFolder
 
     # Determine the MinGit root folder (subfolder named like "MinGit-2.49.0-64-bit")
     $minGitRoot = ($result | Select-Object -ExpandProperty Path | Select-Object -First 1)
