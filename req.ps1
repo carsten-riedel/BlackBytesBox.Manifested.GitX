@@ -109,12 +109,14 @@ function Write-LogInline {
     }
 
     # Timestamp and render
+    $Params = @($Params)
     $timeEntry = Get-Date
     $timeStr   = $timeEntry.ToString('yyyy-MM-dd HH:mm:ss:fff')
     $plMatches = [regex]::Matches($Template, '{(?<name>\w+)}')
     $keys      = $plMatches | ForEach-Object { $_.Groups['name'].Value } | Select-Object -Unique
+    $keys = @($keys)
     if ($Params -is [hashtable]) {
-        $map = $Params
+        $map = @($Params)
     } else {
         $map = @{}
         for ($i = 0; $i -lt $keys.Count; $i++) { $map[$keys[$i]] = $Params[$i] }
@@ -778,7 +780,7 @@ $WriteLogInlineDefaults = @{
     ReturnJson    = $false
 }
 
-Write-LogInline -Level Information -Template "Finished processing {Scriptname} !" -Params @("req.ps1") @WriteLogInlineDefaults
+Write-LogInline -Level Information -Template "Finished processing {Script} !" -Params @("req.ps1") @WriteLogInlineDefaults
 
 #Invoke-RestMethod -Uri https://raw.githubusercontent.com/carsten-riedel/BlackBytesBox.Manifested.GitX/refs/heads/main/req.ps1 | Invoke-Expression
 

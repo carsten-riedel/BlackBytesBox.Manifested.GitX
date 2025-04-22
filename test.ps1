@@ -109,12 +109,14 @@ function Write-LogInline {
     }
 
     # Timestamp and render
+    $Params = @($Params)
     $timeEntry = Get-Date
     $timeStr   = $timeEntry.ToString('yyyy-MM-dd HH:mm:ss:fff')
     $plMatches = [regex]::Matches($Template, '{(?<name>\w+)}')
     $keys      = $plMatches | ForEach-Object { $_.Groups['name'].Value } | Select-Object -Unique
+    $keys = @($keys)
     if ($Params -is [hashtable]) {
-        $map = $Params
+        $map = @($Params)
     } else {
         $map = @{}
         for ($i = 0; $i -lt $keys.Count; $i++) { $map[$keys[$i]] = $Params[$i] }
@@ -278,120 +280,7 @@ function Write-LogInline {
                         -OutFile 'C:\temp\large.bin' \
                         -Force
 #>
-function Invoke-WebRequestEx {
-    [CmdletBinding(DefaultParameterSetName = 'NoBody')]
-    param (
-        [Parameter(Mandatory, Position = 0)]
-        [ValidateNotNullOrEmpty()]
-        [string] $Uri,
 
-        [Parameter(Mandatory, Position = 1)]
-        [ValidateNotNullOrEmpty()]
-        [string] $OutFile,
-
-        [Parameter()]
-        [ValidateSet('GET','POST','PUT','DELETE','HEAD','OPTIONS','PATCH')]
-        [string] $Method = 'GET',
-
-        [Parameter()]
-        [hashtable] $Headers,
-
-        [Parameter()]
-        [ValidateRange(0, [int]::MaxValue)]
-        [int] $TimeoutSec = 0,
-
-        [Parameter()]
-        [System.Management.Automation.PSCredential] $Credential,
-
-        [Parameter(ParameterSetName = 'WithBody')]
-        [byte[]] $Body,
-
-        [Parameter()]
-        [switch] $Force,
-
-        [Parameter()]
-        [ValidateRange(1, [long]::MaxValue)]
-        [long] $BufferSize = 4MB
-    )
-
-    # Prepare output file
-    if (Test-Path $OutFile) {
-        if (-not $Force) {
-            throw "File '$OutFile' already exists. Use -Force to overwrite."
-        }
-    }
-
-    Write-LogInline -Level Information `
-                    -Template "Preparing download: {uri} to {file}" `
-                    -Params @{ uri = $Uri; file = $OutFile } `
-                    -Overwrite
-
-    # Initialize WebRequest
-    $req = [System.Net.WebRequest]::Create($Uri)
-    $req.Method = $Method
-    if ($TimeoutSec -gt 0) {
-        $req.Timeout = $TimeoutSec * 1000
-        $req.ReadWriteTimeout = $TimeoutSec * 1000
-    }
-    if ($Credential) { $req.Credentials = $Credential }
-    if ($Headers) { $Headers.GetEnumerator() | ForEach-Object { $req.Headers.Add($_.Name, $_.Value) } }
-
-    if ($PSCmdlet.ParameterSetName -eq 'WithBody') {
-        if ($Method -notin 'POST','PUT','PATCH') {
-            throw "Body parameter is only allowed with POST, PUT, or PATCH methods."
-        }
-        $req.ContentLength = $Body.Length
-        $stream = $req.GetRequestStream()
-        $stream.Write($Body, 0, $Body.Length)
-        $stream.Close()
-    }
-
-    try {
-        $resp = $req.GetResponse()
-        $inStream = $resp.GetResponseStream()
-        $mode = if ($Force) { 'Create' } else { 'CreateNew' }
-        $outStream = [System.IO.File]::Open($OutFile, $mode)
-
-        $total      = $resp.ContentLength
-        $downloaded = 0
-        $buffer     = New-Object byte[] $BufferSize
-
-        while (($read = $inStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
-            $outStream.Write($buffer, 0, $read)
-            $downloaded += $read
-
-            if ($total -gt 0) {
-                $pct = [math]::Round(100 * $downloaded / $total, 1)
-                Write-LogInline -Level Information `
-                                -Template "Downloaded {pct}% ({done}/{total} bytes)" `
-                                -Params @{ pct = $pct; done = $downloaded; total = $total } `
-                                -Overwrite
-            }
-            else {
-                Write-LogInline -Level Information `
-                                -Template "Downloaded {bytes} bytes..." `
-                                -Params @{ bytes = $downloaded } `
-                                -Overwrite
-            }
-        }
-
-        Write-LogInline -Level Information `
-                        -Template "Download complete: {file}" `
-                        -Params @{ file = $OutFile } `
-                        -Overwrite:$false
-    }
-    catch {
-        Write-LogInline -Level Error `
-                        -Template "Download failed: {err}" `
-                        -Params @{ err = $_.Exception.Message } `
-                        -Overwrite:$false
-        throw $_
-    }
-    finally {
-        $inStream?.Dispose()
-        $outStream?.Dispose()
-    }
-}
 
 
 $WriteLogInlineDefaults = @{
@@ -404,6 +293,17 @@ $WriteLogInlineDefaults = @{
  }
 
 
+ $WriteLogInlineDefaults = @{
+    FileMinLevel  = 'Error'
+    MinLevel      = 'Information'
+    UseBackColor  = $false
+    Overwrite     = $false
+    FileAppName   = 'req.ps1'
+    ReturnJson    = $false
+}
+
+Write-LogInline -Level Information -Template "Finished processing {script} !" -Params "req.ps1" @WriteLogInlineDefaults
+
 Write-LogInline -Level Verbose -Template "{hello}-{world} number {num} at {time} !" -Params "Hello","World",1, 1.2 @WriteLogInlineDefaults -InitialWrite
 Start-Sleep -Seconds 2
 Write-LogInline -Level Debug -Template "{hello}-{world} number {num} at {time} !" -Params "Hello","World1",1, 1.33333 @WriteLogInlineDefaults
@@ -415,5 +315,4 @@ Start-Sleep -Seconds 2
 Write-LogInline -Level Critical -Template "{hello}-{world} number {num} at {time} !" -Params "Hello","World",1, 1.6 @WriteLogInlineDefaults
 Start-Sleep -Seconds 2
 
-Invoke-WebRequestEx -Uri 'https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct/raw/main/model.safetensors' -OutFile 'C:\temp\x.bin' -Force
 
