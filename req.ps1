@@ -494,18 +494,17 @@ catch {
 
 # Define your cleanup block as before
 $cleanupScript = {
-    Remove-Module PowerShellGet -Force
-    Import-Module PowerShellGet -Force
     Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Initialize'
     Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Git'
 }
 
-# Launch a new Windows PowerShell 5.1 process
-Start-Process powershell.exe -ArgumentList @(
+# Launch a new Windows PowerShell 5.1 process in hidden window
+Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @(
     '-NoProfile',
     '-ExecutionPolicy','Bypass',
     '-Command', $cleanupScript.ToString()
 ) -Wait
+
 
 
 # Detect OS and bail if not Windows
