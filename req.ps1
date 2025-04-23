@@ -161,7 +161,7 @@ function Write-LogInline {
             'System.Boolean'  = 'Magenta'; 'Default'          = 'White'
             'System.Version'  = 'Magenta'; 'Microsoft.PackageManagement.Internal.Utility.Versions.FourPartVersion' = 'Magenta'
             'Microsoft.PowerShell.ExecutionPolicy' = 'Magenta'
-            
+            'System.Management.Automation.ActionPreference' = 'Green'
         }
         $staticFore = 'White'; $staticBack = 'Black'
         function Write-Colored { param($Text,$Fore,$Back) if ($UseBackColor -and $Back) { Write-Host -NoNewline $Text -ForegroundColor $Fore -BackgroundColor $Back } else { Write-Host -NoNewline $Text -ForegroundColor $Fore } }
@@ -415,6 +415,10 @@ catch {
     exit 1
 }
 
+$originalProgressPreference = $ProgressPreference
+$ProgressPreference = 'SilentlyContinue'
+Write-LogInline -Level Information -Template 'ProgressPreference temporarily set to {ProgressPreference}' -Params 'SilentlyContinue' @WriteLogInlineDefaults
+
 
 try {
     Write-LogInline -Level Information -Template 'Checking installed NuGet Package Provider version...' @WriteLogInlineDefaults
@@ -511,6 +515,10 @@ catch {
     Write-LogInline -Level Error -Template 'Failed to install BlackBytesBox.Manifested.Git module. {0}' -Params $_ @WriteLogInlineDefaults
     exit 1
 }
+
+
+$ProgressPreference = $originalProgressPreference
+Write-LogInline -Level Information -Template 'ProgressPreference restored to {ProgressPreference}' -Params $originalProgressPreference @WriteLogInlineDefaults
 
 
 # Define your cleanup block as before
