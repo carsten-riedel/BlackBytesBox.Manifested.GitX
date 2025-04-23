@@ -629,21 +629,20 @@ Write-LogInline -Level Information -Template 'Verifying Python installation stat
 
 # Check for python.exe / install pyenv-win
 if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-Command python -ErrorAction SilentlyContinue)) {
-    Write-Info -Message 'Python not detected. Cloning pyenv-win into %USERPROFILE%\.pyenv...' -Color Yellow
+    Write-LogInline -Level Warning -Template 'Python not detected. Cloning pyenv-win into %USERPROFILE%\.pyenv...' @WriteLogInlineDefaults
 
     # Validate Git clone operation idempotently
     $repoPath = "$env:USERPROFILE\.pyenv"
     if (Test-Path $repoPath) {
-        Write-Info -Message "pyenv-win repo already exists at $repoPath; skipping clone." -Color Yellow
+        Write-LogInline -Level Warning -Template 'pyenv-win repo already exists at {repoPath}; skipping clone.' -Params $repoPath @WriteLogInlineDefaults
     } else {
         git clone https://github.com/pyenv-win/pyenv-win.git $repoPath
         if ($LASTEXITCODE -ne 0) {
-            Write-Info -Message 'ERROR: git clone failed. Please check your Git configuration.' -Color Red
+            Write-LogInline -Level Error -Template 'Git clone failed. Please check your Git configuration.' @WriteLogInlineDefaults
             exit 1
         }
-        Write-Info -Message 'pyenv-win cloned successfully.' -Color Green
+        Write-LogInline -Level Information -Template 'pyenv-win cloned successfully.' @WriteLogInlineDefaults
     }
-
 
     # --- BEGIN pyenv-win initialization ---
 
@@ -655,7 +654,7 @@ if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-C
     $env:PYENV_HOME  = $pyenvRoot
     $env:PYENV_ROOT  = $pyenvRoot
     $env:Path        = "$pyenvRoot\bin;$pyenvRoot\shims;$env:Path"
-    Write-Info -Message "Session variables set: PYENV, PYENV_HOME, PYENV_ROOT, and PATH updated." -Color Cyan
+    Write-LogInline -Level Information -Template 'Session variables set: PYENV, PYENV_HOME, PYENV_ROOT, and PATH updated.' @WriteLogInlineDefaults
 
     # 2) Persist to user environment
     [Environment]::SetEnvironmentVariable('PYENV',      $pyenvRoot, 'User')
@@ -667,16 +666,16 @@ if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-C
     if ($userPath -notlike "*$pyenvRoot*") {
         $newUserPath = "$pyenvRoot\bin;$pyenvRoot\shims;$userPath"
         [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
-        Write-Info -Message "Persisted pyenv-win paths to user PATH." -Color Cyan
+        Write-LogInline -Level Information -Template 'Persisted pyenv-win paths to user PATH.' @WriteLogInlineDefaults
     }
 
     # 3) Initialize and install Python versions
-    Write-Info -Message 'Rehashing pyenv and installing Python 3.11.1…' -Color Yellow
+    Write-LogInline -Level Information -Template 'Rehashing pyenv and installing Python 3.11.1…' @WriteLogInlineDefaults
     & pyenv rehash
     & pyenv install 3.11.1
     & pyenv global  3.11.1
 
-    Write-Info -Message 'pyenv initialization complete. Installed versions:' -Color Green
+    Write-LogInline -Level Information -Template 'pyenv initialization complete. Installed versions:' @WriteLogInlineDefaults
     & pyenv versions
 
     # --- END pyenv-win initialization ---
@@ -691,6 +690,7 @@ else {
     Write-LogInline -Level Information -Template 'Python is already available at {pyPath}. Skipping pyenv-win setup.' -Params $pyPath @WriteLogInlineDefaults
 }
 
+
 Write-LogInline -Level Information -Template 'Verifying MSYS2 installation status...' @WriteLogInlineDefaults
 
 # Check for MSYS2 installation by looking for the 'msys64' folder
@@ -699,35 +699,35 @@ $programFolderMsys2 = Join-Path $programFolder 'msys64'
 
 # If the MSYS2 'msys64' folder doesn't exist, install
 if (-not (Test-Path -Path $programFolderMsys2 -PathType Container)) {
-    Write-Info "MSYS2 not found. Starting installation..." -Color Yellow
+    Write-LogInline -Level Warning -Template 'MSYS2 not found. Starting installation...' @WriteLogInlineDefaults
 
     # Use the system temp directory for downloads and cleanup
     $tempRoot       = $env:TEMP
     $tempFolderName = [System.IO.Path]::GetRandomFileName()
     $tempFolder     = Join-Path $tempRoot $tempFolderName
     New-Item -ItemType Directory -Path $tempFolder -Force | Out-Null
-    Write-Info "Created temporary folder: $tempFolder" -Color Green
+    Write-LogInline -Level Information -Template 'Created temporary folder: {tempFolder}' -Params $tempFolder @WriteLogInlineDefaults
 
     # Download the latest self-extracting installer from GitHub
-    Write-Info "Downloading latest MSYS2 installer..." -Color Cyan
+    Write-LogInline -Level Information -Template 'Downloading latest MSYS2 installer...' @WriteLogInlineDefaults
     $result = Get-GitHubLatestRelease `
         -RepoUrl 'https://github.com/msys2/msys2-installer' `
         -Whitelist '*latest.sfx.exe*' `
         -IncludeVersionFolder `
-        -DownloadFolder   $tempFolder
-    Write-Info "Download complete." -Color Green
+        -DownloadFolder $tempFolder
+    Write-LogInline -Level Information -Template 'Download complete.' @WriteLogInlineDefaults
 
     # Locate and run the installer in silent mode, output to ProgramFolder (recursive search)
     $installer = Get-ChildItem -Path $tempFolder -Filter '*.sfx.exe' -Recurse -File | Select-Object -First 1
-    Write-Info "Running installer: $($installer.FullName)" -Color Cyan
+    Write-LogInline -Level Information -Template 'Running installer: {installerPath}' -Params $installer.FullName @WriteLogInlineDefaults
     & $installer.FullName -y -o"$programFolder" | Out-Null
-    Write-Info "MSYS2 installation finished." -Color Green
+    Write-LogInline -Level Information -Template 'MSYS2 installation finished.' @WriteLogInlineDefaults
 
     # Clean up: remove installer and temporary folder
     Remove-Item -Path $installer.FullName -Force
-    Write-Info "Removed installer executable." -Color Green
-    Remove-Item -Path $tempFolder     -Recurse -Force
-    Write-Info "Cleaned up temporary folder: $tempFolder" -Color Green
+    Write-LogInline -Level Information -Template 'Removed installer executable.' @WriteLogInlineDefaults
+    Remove-Item -Path $tempFolder -Recurse -Force
+    Write-LogInline -Level Information -Template 'Cleaned up temporary folder: {tempFolder}' -Params $tempFolder @WriteLogInlineDefaults
 }
 else {
     Write-LogInline -Level Information -Template 'MSYS2 already installed (found {programFolderMsys2}).' -Params $programFolderMsys2 @WriteLogInlineDefaults
