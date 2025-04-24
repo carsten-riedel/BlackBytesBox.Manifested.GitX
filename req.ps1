@@ -876,6 +876,8 @@ if ((Get-Command python -ErrorAction SilentlyContinue) -and (Get-Command convert
     if (Test-Path -Path $virtualEnvPath -PathType Container) {
         if (Test-Path -Path 'C:\HuggingfaceModels\HuggingFaceTB\SmolLM2-135M-Instruct' -PathType Container) {
             Write-LogInline -Level Information -Template 'Model is downloaded and ready for convert.' @WriteLogInlineDefaults
+            $gguflatest = Join-Path $programFolderMsys2 "home\$($env:Username)\llama.cpp\gguf-py"
+            Invoke-VenvCommand "$pythonModuleSwitch pip install -e ""$gguflatest"""
             Invoke-VenvCommand "$convertHfToGgufPath C:\HuggingfaceModels\HuggingFaceTB\SmolLM2-135M-Instruct --outfile C:\HuggingfaceModels\ConvertedSafeTensors\SmolLM2-1.7B-Instruct.gguf"
         } else {
             Write-LogInline -Level Error -Template "" -Params $virtualEnvPath @WriteLogInlineDefaults
