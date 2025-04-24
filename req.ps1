@@ -870,6 +870,13 @@ if ((Get-Command python -ErrorAction SilentlyContinue) -and (Get-Command convert
         Write-Host "& $venvExecutable $ModuleArgs"
     }
 
+    # Destination directory: ensure it exists
+    $destDir = 'C:\HuggingfaceModels\ConvertedSafeTensors'
+    if (-not (Test-Path -Path $destDir -PathType Container)) {
+        Write-LogInline -Level Information -Template 'Creating destination directory at {destDir}...' -Params $destDir @WriteLogInlineDefaults
+        New-Item -Path $destDir -ItemType Directory | Out-Null
+    }
+
     # Virtual environment creation
 
     Write-LogInline -Level Information -Template 'Checking for virtual environment at {virtualEnvPath}...' -Params $virtualEnvPath @WriteLogInlineDefaults
