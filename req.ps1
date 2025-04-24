@@ -842,7 +842,7 @@ $activateScript = Join-Path $virtualEnvPath 'Scripts\Activate.ps1'
 Write-LogInline -Level Information -Template "To activate this virtual environment later, run:" @WriteLogInlineDefaults
 Write-LogInline -Level Information -Template "    & '$activateScript'" @WriteLogInlineDefaults
 
-
+Write-LogInline -Level Information -Template "https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct" @WriteLogInlineDefaults
 Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
 
 Write-LogInline -Level Information -Template 'Verifying Python installation status...' @WriteLogInlineDefaults
