@@ -672,8 +672,8 @@ if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-C
     # 3) Initialize and install Python versions
     Write-LogInline -Level Information -Template 'Rehashing pyenv and installing Python 3.11.1…' @WriteLogInlineDefaults
     & pyenv rehash
-    & pyenv install 3.11.1
-    & pyenv global  3.11.1
+    & pyenv install 3.11.12
+    & pyenv global  3.11.12
 
     Write-LogInline -Level Information -Template 'pyenv initialization complete. Installed versions:' @WriteLogInlineDefaults
     & pyenv versions
@@ -799,7 +799,7 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
         param(
             [string]$ModuleArgs
         )
-        Invoke-Expression "& $venvExecutable $pythonModuleSwitch $ModuleArgs" | Out-Null
+        Invoke-Expression "& $venvExecutable $pythonModuleSwitch $ModuleArgs"
     }
 
     # Virtual environment creation
@@ -808,6 +808,7 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
     if (-not (Test-Path -Path $virtualEnvPath -PathType Container)) {
         Write-LogInline -Level Information -Template 'Creating virtual environment at {virtualEnvPath}...' -Params $virtualEnvPath @WriteLogInlineDefaults
         & $pythonCommand $pythonModuleSwitch venv "$virtualEnvPath"
+        Write-LogInline -Level Information -Template "$pythonCommand $pythonModuleSwitch venv $virtualEnvPath" -Params $virtualEnvPath @WriteLogInlineDefaults
     } else {
         Write-LogInline -Level Information -Template 'Virtual environment already exists at {virtualEnvPath}.' -Params $virtualEnvPath @WriteLogInlineDefaults
     }
@@ -848,7 +849,7 @@ Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/HuggingFaceTB
 
 Write-LogInline -Level Information -Template 'Verifying Python installation status...' @WriteLogInlineDefaults
 
-if (Get-Command python -ErrorAction SilentlyContinue -and Get-Command convert_hf_to_gguf.py -ErrorAction SilentlyContinue) {
+if ((Get-Command python -ErrorAction SilentlyContinue) -and (Get-Command convert_hf_to_gguf.py -ErrorAction SilentlyContinue)) {
     Write-LogInline -Level Information -Template 'Found Python. Proceeding with environment setup...' @WriteLogInlineDefaults
 
     $convertHfToGgufPath = (Get-Command convert_hf_to_gguf.py -ErrorAction SilentlyContinue).Source
@@ -863,7 +864,8 @@ if (Get-Command python -ErrorAction SilentlyContinue -and Get-Command convert_hf
         param(
             [string]$ModuleArgs
         )
-        Invoke-Expression "& $venvExecutable $pythonModuleSwitch $ModuleArgs" | Out-Null
+        Invoke-Expression "& $venvExecutable $ModuleArgs"
+        Write-Host "& $venvExecutable $ModuleArgs"
     }
 
     # Virtual environment creation
