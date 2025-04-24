@@ -672,8 +672,8 @@ if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-C
     # 3) Initialize and install Python versions
     Write-LogInline -Level Information -Template 'Rehashing pyenv and installing Python 3.11.1…' @WriteLogInlineDefaults
     & pyenv rehash
-    & pyenv install 3.11.12
-    & pyenv global  3.11.12
+    & pyenv install 3.11.9
+    & pyenv global  3.11.9
 
     Write-LogInline -Level Information -Template 'pyenv initialization complete. Installed versions:' @WriteLogInlineDefaults
     & pyenv versions
