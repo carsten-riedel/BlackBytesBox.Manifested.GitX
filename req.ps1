@@ -709,7 +709,7 @@ if (-not (Test-Path -Path $programFolderMsys2 -PathType Container)) {
     Write-LogInline -Level Information -Template 'Created temporary folder: {tempFolder}' -Params $tempFolder @WriteLogInlineDefaults
 
     # Download the latest self-extracting installer from GitHub
-    Write-LogInline -Level Information -Template 'Downloading latest MSYS2 installer...' @WriteLogInlineDefaults
+    Write-LogInline -Level Information -Template 'Downloading latest MSYS2 installer... {folder}' -Params $tempFolder @WriteLogInlineDefaults
     $result = Get-GitHubLatestRelease `
         -RepoUrl 'https://github.com/msys2/msys2-installer' `
         -Whitelist '*latest.sfx.exe*' `
