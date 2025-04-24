@@ -80,7 +80,7 @@ function Write-LogInline {
     # ANSI escape
     $esc = [char]27
     if (-not $script:WLI_Caller) {
-        $script:WLI_Caller = if ($MyInvocation.PSCommandPath) { Split-Path -Leaf $MyInvocation.PSCommandPath } else { 'Con' }
+        $script:WLI_Caller = if ($MyInvocation.PSCommandPath) { Split-Path -Leaf $MyInvocation.PSCommandPath } else { 'Console' }
     }
     $caller = $script:WLI_Caller
 
@@ -405,9 +405,9 @@ try {
         Write-LogInline -Level Information -Template "Execution policy is already set appropriately. Skipping changes." @WriteLogInlineDefaults
     }
     else {
-        Write-LogInline -Level Information -Template "Setting execution policy to RemoteSigned to allow scripts/modules..." @WriteLogInlineDefaults
+        Write-LogInline -Level Information -Template "Setting execution policy to {RemoteSigned} to allow scripts/modules..." -Params 'RemoteSigned' @WriteLogInlineDefaults
         Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-        Write-LogInline -Level Information -Template "Execution policy updated to RemoteSigned. Scripts and modules can now run." @WriteLogInlineDefaults
+        Write-LogInline -Level Information -Template "Execution policy updated to {RemoteSigned}. Scripts and modules can now run." -Params 'RemoteSigned' @WriteLogInlineDefaults
     }
 }
 catch {
@@ -844,18 +844,54 @@ Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/HuggingFaceTB
 #Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
 #Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/microsoft/Phi-4-mini-instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels'
 
-$WriteLogInlineDefaults = @{
-    FileMinLevel  = 'Error'
-    MinLevel      = 'Information'
-    UseBackColor  = $false
-    Overwrite     = $false
-    FileAppName   = 'req.ps1'
-    ReturnJson    = $false
+
+
+Write-LogInline -Level Information -Template 'Verifying Python installation status...' @WriteLogInlineDefaults
+
+if (Get-Command python -ErrorAction SilentlyContinue -and Get-Command convert_hf_to_gguf.py -ErrorAction SilentlyContinue) {
+    Write-LogInline -Level Information -Template 'Found Python. Proceeding with environment setup...' @WriteLogInlineDefaults
+
+    $convertHfToGgufPath = (Get-Command convert_hf_to_gguf.py -ErrorAction SilentlyContinue).Source
+    # Define variables
+    $pythonCommand      = "python"
+    $pythonModuleSwitch = "-m"
+    $virtualEnvPath     = Join-Path $env:Userprofile 'PythonVirtualEnvironment'
+    $venvExecutable     = Join-Path $virtualEnvPath 'Scripts\python.exe'
+
+    # Function to invoke python module commands
+    function Invoke-VenvCommand {
+        param(
+            [string]$ModuleArgs
+        )
+        Invoke-Expression "& $venvExecutable $pythonModuleSwitch $ModuleArgs" | Out-Null
+    }
+
+    # Virtual environment creation
+
+    Write-LogInline -Level Information -Template 'Checking for virtual environment at {virtualEnvPath}...' -Params $virtualEnvPath @WriteLogInlineDefaults
+    if (Test-Path -Path $virtualEnvPath -PathType Container) {
+        if (Test-Path -Path 'C:\HuggingfaceModels\HuggingFaceTB\SmolLM2-135M-Instruct' -PathType Container) {
+            Write-LogInline -Level Information -Template 'Model is downloaded and ready for convert.' @WriteLogInlineDefaults
+            Invoke-VenvCommand "$convertHfToGgufPath C:\HuggingfaceModels\HuggingFaceTB\SmolLM2-135M-Instruct --outfile C:\HuggingfaceModels\ConvertedSafeTensors\SmolLM2-1.7B-Instruct.gguf"
+        } else {
+            Write-LogInline -Level Error -Template "" -Params $virtualEnvPath @WriteLogInlineDefaults
+        }
+    } else {
+        Write-LogInline -Level Error -Template 'Virtual environment not exists at {virtualEnvPath}.' -Params $virtualEnvPath @WriteLogInlineDefaults
+    }
+    
+
+    # Upgrade pip & tooling
+
+
+} else {
+    Write-LogInline -Level Error -Template "'python' not found in PATH. Please install Python or adjust the script." @WriteLogInlineDefaults
 }
+
 
 Write-LogInline -Level Information -Template "Script {Script} has finished processing." -Params "req.ps1" @WriteLogInlineDefaults
 
 #Invoke-RestMethod -Uri https://raw.githubusercontent.com/carsten-riedel/BlackBytesBox.Manifested.GitX/refs/heads/main/req.ps1 | Invoke-Expression
-#
+
 
 
