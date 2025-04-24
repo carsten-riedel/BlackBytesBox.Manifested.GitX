@@ -844,10 +844,6 @@ Write-LogInline -Level Information -Template "    & '$activateScript'" @WriteLog
 
 
 Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
-#Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
-#Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/microsoft/Phi-4-mini-instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels'
-
-
 
 Write-LogInline -Level Information -Template 'Verifying Python installation status...' @WriteLogInlineDefaults
 
