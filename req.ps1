@@ -892,6 +892,31 @@ if ((Get-Command python -ErrorAction SilentlyContinue) -and (Get-Command convert
     Write-LogInline -Level Error -Template "'python' not found in PATH. Please install Python or adjust the script." @WriteLogInlineDefaults
 }
 
+# Check for Microsoft Visual C++ Redistributable 2015-2019 (x64) via core DLL version
+# This method inspects vcruntime140.dll in System32 for presence and correct minimum version
+
+# Desired minimum version (from 14.29.30156 onwards)
+$minVersion = [Version]'14.29.30156.0'
+
+# Path to 64-bit runtime DLL
+$dllPath = Join-Path $env:SystemRoot 'System32\vcruntime140.dll'
+
+if (Test-Path $dllPath) {
+    try {
+        $fileVersionInfo = (Get-Item $dllPath).VersionInfo
+        $installedVersion = [Version]$fileVersionInfo.FileVersion
+        if ($installedVersion -ge $minVersion) {
+            Write-LogInline -Level Information -Template "Runtime DLL found: {dllPath} (version {installedVersion})" -Params "$dllPath","$installedVersion" @WriteLogInlineDefaults
+        } else {
+            Write-LogInline -Level Warning -Template "Runtime version too low: {installedVersion} (< {minVersion})" -Params "$installedVersion","$minVersion" @WriteLogInlineDefaults
+        }
+    } catch {
+        Write-LogInline -Level Error -Template "Error reading version info from {dllPath}: {0}" -Params $dllPath $_.Exception.Message @WriteLogInlineDefaults
+    }
+} else {
+    Write-LogInline -Level Warning -Template "Missing runtime DLL: {dllPath}" -Params $dllPath @WriteLogInlineDefaults
+}
+
 
 Write-LogInline -Level Information -Template "Script {Script} has finished processing." -Params "req.ps1" @WriteLogInlineDefaults
 
