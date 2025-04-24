@@ -733,7 +733,7 @@ else {
     Write-LogInline -Level Information -Template 'MSYS2 already installed (found {programFolderMsys2}).' -Params $programFolderMsys2 @WriteLogInlineDefaults
 }
 
-Write-LogInline -Level Information -Template 'Verifying llama.cpp installation status...' @WriteLogInlineDefaults
+Write-LogInline -Level Information -Template "Verifying llama.cpp installation status..." @WriteLogInlineDefaults
 
 # Check for llama.cpp installation by looking for the 'llama.cpp' folder
 $programFolderLlamaCpp = Join-Path $env:LocalAppData 'Programs\llama.cpp'
@@ -745,43 +745,45 @@ if (-not (Test-Path -Path $programFolderLlamaCpp -PathType Container)) {
     $msysShellArgs = "-defterm -here -no-start -ucrt64 -shell bash -c"
     $fullShellCommand = "& $msysShellScript $msysShellArgs"
 
-    Write-Info "Installing dependencies via pacman..." -Color Cyan
+    Write-LogInline -Level Information -Template "Installing dependencies via pacman..."  @WriteLogInlineDefaults
     $bashCmdBaseInvoke = "pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-gcc git mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja"
-    Write-Info "Executing: $bashCmdBaseInvoke" -Color Gray
+    Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke"  @WriteLogInlineDefaults
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
 
-    Write-Info "Cloning llama.cpp repository..." -Color Cyan
+    Write-LogInline -Level Information -Template "Cloning llama.cpp repository..." @WriteLogInlineDefaults
     $bashCmdBaseInvoke = "git clone --recurse-submodules https://github.com/ggerganov/llama.cpp.git ""`$HOME/llama.cpp"""
-    Write-Info "Executing: $bashCmdBaseInvoke" -Color Gray
+    Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke"  @WriteLogInlineDefaults
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
 
     $binOutputBash = Convert-ToMsysPath -WindowsPath $programFolderLlamaCpp
 
-    Write-Info "Configuring build with CMake..." -Color Cyan
+    Write-LogInline -Level Information -Template "Configuring build with CMake..." @WriteLogInlineDefaults
     $bashCmdBaseInvoke = "cmake -S `$HOME/llama.cpp -B `$HOME/llama.cpp/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$binOutputBash -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_SERVER=ON"
-    Write-Info "Executing: $bashCmdBaseInvoke" -Color Gray
+    Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke" @WriteLogInlineDefaults
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
 
-    Write-Info "Building llama.cpp..." -Color Cyan
+    Write-LogInline -Level Information -Template "Building llama.cpp..." @WriteLogInlineDefaults
     $bashCmdBaseInvoke = "cmake --build `$HOME/llama.cpp/build --config Release"
-    Write-Info "Executing: $bashCmdBaseInvoke" -Color Gray
+    Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke" @WriteLogInlineDefaults
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
 
-    Write-Info "Installing llama.cpp..." -Color Cyan
+    Write-LogInline -Level Information -Template "Installing llama.cpp..." @WriteLogInlineDefaults
     $bashCmdBaseInvoke = "cmake --install `$HOME/llama.cpp/build --config Release"
-    Write-Info "Executing: $bashCmdBaseInvoke" -Color Gray
+    Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke" @WriteLogInlineDefaults
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
 
-    Write-Info "Copying missing dlls to llama.cpp..." -Color Cyan
+    Write-LogInline -Level Information -Template "Copying missing dlls to llama.cpp..." @WriteLogInlineDefaults
     $bashCmdBaseInvoke = "cp /ucrt64/bin/*.dll ""$binOutputBash/bin/"""
-    Write-Info "Executing: $bashCmdBaseInvoke" -Color Gray
+    Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke" @WriteLogInlineDefaults
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
 
     Add-ToUserPathIfMissing -Paths "$programFolderLlamaCpp\bin"
 
 } else {
-    Write-LogInline -Level Information -Template 'Llama.cpp already present (found {programFolderLlamaCpp}).' -Params $programFolderLlamaCpp @WriteLogInlineDefaults
+    Write-LogInline -Level Information -Template "Llama.cpp already present (found {programFolderLlamaCpp})." -Params $programFolderLlamaCpp @WriteLogInlineDefaults
 }
+
+
 
 Write-LogInline -Level Information -Template 'Verifying Python installation status...' @WriteLogInlineDefaults
 
