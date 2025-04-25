@@ -749,7 +749,7 @@ if (-not (Test-Path -Path $programFolderLlamaCpp -PathType Container)) {
     $bashCmdBaseInvoke = "echo 'First msys call initalize scripts have to run...'"
     Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke"  @WriteLogInlineDefaults
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
-
+   
     Write-LogInline -Level Information -Template "Installing dependencies via pacman..."  @WriteLogInlineDefaults
     $bashCmdBaseInvoke = "pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-gcc git mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja"
     Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke"  @WriteLogInlineDefaults
@@ -788,6 +788,28 @@ if (-not (Test-Path -Path $programFolderLlamaCpp -PathType Container)) {
     Write-LogInline -Level Information -Template "Llama.cpp already present (found {programFolderLlamaCpp})." -Params $programFolderLlamaCpp @WriteLogInlineDefaults
 }
 
+
+## additional check for llama cloned. for convert script.
+
+<#
+$msysClonePath = Join-Path $env:LocalAppData "Programs\msys64\home\$($env:Username)\llama.cpp"
+if (-not (Test-Path -Path $msysClonePath -PathType Container)) {
+    
+    $msysInstallPath = Join-Path $env:LocalAppData 'Programs\msys64'
+    $msysShellScript = """$msysInstallPath\msys2_shell.cmd"""
+    $msysShellArgs = "-defterm -here -no-start -ucrt64 -shell bash -c"
+    $fullShellCommand = "& $msysShellScript $msysShellArgs"
+
+    Write-LogInline -Level Information -Template "Cloning llama.cpp repository..." @WriteLogInlineDefaults
+    $bashCmdBaseInvoke = "git clone --recurse-submodules https://github.com/ggerganov/llama.cpp.git ""`$HOME/llama.cpp"""
+    Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke"  @WriteLogInlineDefaults
+    Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke"  @WriteLogInlineDefaults
+    Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
+    
+} else {
+    Write-LogInline -Level Information -Template 'Virtual environment already exists at {virtualEnvPath}.' -Params $virtualEnvPath @WriteLogInlineDefaults
+}
+#>
 
 
 Write-LogInline -Level Information -Template 'Verifying Python installation status...' @WriteLogInlineDefaults
@@ -923,7 +945,7 @@ if (Test-Path $dllPath) {
             Write-LogInline -Level Warning -Template "Runtime version too low: {installedVersion} (< {minVersion})" -Params "$installedVersion","$minVersion" @WriteLogInlineDefaults
         }
     } catch {
-        Write-LogInline -Level Error -Template "Error reading version info from {dllPath}: {0}" -Params $dllPath $_.Exception.Message @WriteLogInlineDefaults
+        Write-LogInline -Level Error -Template "Error reading version info from {dllPath}: {0}" -Params "$dllPath", "$_.Exception.Message" @WriteLogInlineDefaults
     }
 } else {
     Write-LogInline -Level Error -Template "Missing runtime DLL: {dllPath}" -Params $dllPath @WriteLogInlineDefaults
