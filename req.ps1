@@ -745,6 +745,11 @@ if (-not (Test-Path -Path $programFolderLlamaCpp -PathType Container)) {
     $msysShellArgs = "-defterm -here -no-start -ucrt64 -shell bash -c"
     $fullShellCommand = "& $msysShellScript $msysShellArgs"
 
+    Write-LogInline -Level Information -Template "First msys call initalize scripts have to run..."  @WriteLogInlineDefaults
+    $bashCmdBaseInvoke = "echo 'First msys call initalize scripts have to run...'"
+    Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke"  @WriteLogInlineDefaults
+    Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
+
     Write-LogInline -Level Information -Template "Installing dependencies via pacman..."  @WriteLogInlineDefaults
     $bashCmdBaseInvoke = "pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-gcc git mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja"
     Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke"  @WriteLogInlineDefaults
@@ -847,7 +852,9 @@ Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/HuggingFaceTB
 
 Write-LogInline -Level Information -Template 'Verifying Python installation status...' @WriteLogInlineDefaults
 
-if ((Get-Command python -ErrorAction SilentlyContinue) -and (Get-Command convert_hf_to_gguf.py -ErrorAction SilentlyContinue)) {
+$pythoncmd = Get-Command python -ErrorAction SilentlyContinue
+$convertcmd = Get-Command convert_hf_to_gguf.py -ErrorAction SilentlyContinue
+if ($pythoncmd -and $convertcmd) {
     Write-LogInline -Level Information -Template 'Found Python. Proceeding with environment setup...' @WriteLogInlineDefaults
 
     $convertHfToGgufPath = (Get-Command convert_hf_to_gguf.py -ErrorAction SilentlyContinue).Source
@@ -908,8 +915,8 @@ $dllPath = Join-Path $env:SystemRoot 'System32\vcruntime140.dll'
 
 if (Test-Path $dllPath) {
     try {
-        $fileVersionInfo = (Get-Item $dllPath).VersionInfo
-        $installedVersion = [Version]$fileVersionInfo.FileVersion
+        $fileVersionInfo = (Get-Item $dllPath).VersionInfo #powershell version info
+        $installedVersion = [Version]$fileVersionInfo.FileVersionRaw # Get the raw version string
         if ($installedVersion -ge $minVersion) {
             Write-LogInline -Level Information -Template "Runtime DLL found: {dllPath} (version {installedVersion})" -Params "$dllPath","$installedVersion" @WriteLogInlineDefaults
         } else {
@@ -919,9 +926,8 @@ if (Test-Path $dllPath) {
         Write-LogInline -Level Error -Template "Error reading version info from {dllPath}: {0}" -Params $dllPath $_.Exception.Message @WriteLogInlineDefaults
     }
 } else {
-    Write-LogInline -Level Warning -Template "Missing runtime DLL: {dllPath}" -Params $dllPath @WriteLogInlineDefaults
+    Write-LogInline -Level Error -Template "Missing runtime DLL: {dllPath}" -Params $dllPath @WriteLogInlineDefaults
 }
-
 
 Write-LogInline -Level Information -Template "Script {Script} has finished processing." -Params "req.ps1" @WriteLogInlineDefaults
 
