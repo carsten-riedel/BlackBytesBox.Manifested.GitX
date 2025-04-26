@@ -827,7 +827,7 @@ Write-LogInline -Level Information -Template 'Verifying Python installation stat
 
 # Check for python.exe / install pyenv-win
 if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-Command python -ErrorAction SilentlyContinue)) {
-    Write-LogInline -Level Warning -Template 'Python not detected. Cloning pyenv-win into %USERPROFILE%\.pyenv...' @WriteLogInlineDefaults
+    Write-LogInline -Level Information -Template 'Python not detected. Cloning pyenv-win into %USERPROFILE%\.pyenv...' @WriteLogInlineDefaults
 
     # Validate Git clone operation idempotently
     $repoPath = "$env:USERPROFILE\.pyenv"
@@ -941,7 +941,7 @@ if (-not (Test-Path -Path $programFolderLlamaCpp -PathType Container)) {
     Write-LogInline -Level Information -Template "First msys call initalize scripts have to run..."  @WriteLogInlineDefaults
     $bashCmdBaseInvoke = "echo 'First msys call initalize scripts have to run...'"
     Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke"  @WriteLogInlineDefaults
-    Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'" | Out-Null
+    Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke' > nul 2>&1"
    
     Write-LogInline -Level Information -Template "Installing dependencies via pacman..."  @WriteLogInlineDefaults
     $bashCmdBaseInvoke = "pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-gcc git mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja"
