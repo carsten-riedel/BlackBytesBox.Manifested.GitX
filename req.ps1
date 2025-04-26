@@ -591,7 +591,7 @@ function Update-UserEnvironmentPath {
 
 
 
-Update-UserEnvironmentPath -Sort -RemoveNonexistent -RemoveEmptyDirs -NoReturn  -Verbose
+Update-UserEnvironmentPath -Sort -RemoveNonexistent -RemoveEmptyDirs -NoReturn
 #Write-LogInline2 -Level Information -Template "Script execution has started.{foo} {baZ}" -Params "bar", 42  @WriteLogInlineDefaults
 
 #Clear-Host
