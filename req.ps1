@@ -371,7 +371,7 @@ function Add-ToUserPathIfMissing {
         $newValue = ($missing + ($currentPaths -split ';')) -join ';'
         try {
             [Environment]::SetEnvironmentVariable('Path', $newValue, $scope)
-            Write-Output "[$scope] Added paths: $($missing -join ', ')"
+            Write-Verbose "[$scope] Added paths: $($missing -join ', ')"
         } catch {
             Write-Error "Failed to update $scope PATH: $_"
         }
@@ -848,7 +848,13 @@ if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-C
     Add-ToUserEnvarIfMissing -Name 'PYENV' -Value $pyenvRoot -Overwrite
     Add-ToUserEnvarIfMissing -Name 'PYENV_HOME' -Value $pyenvRoot -Overwrite
     Add-ToUserEnvarIfMissing -Name 'PYENV_ROOT' -Value $pyenvRoot -Overwrite
-    Add-ToUserPathIfMissing -Paths "$pyenvRoot\bin", "$pyenvRoot"
+    
+    $retval = Add-ToUserPathIfMissing -Paths "$pyenvRoot\bin", "$pyenvRoot"
+    foreach ($added in $retval.Paths)
+    {
+        Write-LogInline -Level Information -Template 'Added {added} to user PATH.' -Params $added @WriteLogInlineDefaults
+    }
+
     # 3) Initialize and install Python versions
     Write-LogInline -Level Information -Template 'Rehashing pyenv and installing Python 3.11.1…' @WriteLogInlineDefaults
 
@@ -856,7 +862,11 @@ if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-C
     & pyenv install 3.11.9
     & pyenv global  3.11.9
 
-    Add-ToUserPathIfMissing -Paths "$pyenvRoot\shims"
+    $retval = Add-ToUserPathIfMissing -Paths "$pyenvRoot\shims"
+    foreach ($added in $retval.Paths)
+    {
+        Write-LogInline -Level Information -Template 'Added {added} to user PATH.' -Params $added @WriteLogInlineDefaults
+    }
 
     Write-LogInline -Level Information -Template 'pyenv initialization complete. Installed versions:' @WriteLogInlineDefaults
     & pyenv versions

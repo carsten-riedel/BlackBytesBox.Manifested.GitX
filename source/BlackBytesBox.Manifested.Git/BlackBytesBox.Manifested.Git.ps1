@@ -1877,8 +1877,6 @@ function Mirror-GitRepoWithDownloadContent {
     Sync-GitRepoFiles -Metadata $metadata -DestinationRoot $DestinationRoot
 }
 
-
-#Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
 #Mirror-GitRepoWithDownloadContent -RepoUrl "https://huggingface.co/microsoft/Phi-4-mini-instruct" -BranchName "main" -DownloadEndpoint "resolve" -DestinationRoot "C:\CustomizeAI\huggingface"
 #Mirror-GitRepoWithDownloadContent -RepoUrl "https://huggingface.co/microsoft/phi-4" -BranchName "main" -DownloadEndpoint "resolve" -DestinationRoot "C:\temp\test"
 
