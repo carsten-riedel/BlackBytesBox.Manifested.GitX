@@ -944,7 +944,7 @@ if (-not (Test-Path -Path $programFolderLlamaCpp -PathType Container)) {
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke' > nul 2>&1"
    
     Write-LogInline -Level Information -Template "Installing dependencies via pacman..."  @WriteLogInlineDefaults
-    $bashCmdBaseInvoke = "pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-gcc git mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja"
+    $bashCmdBaseInvoke = "pacman -S --needed --noconfirm --noprogressbar mingw-w64-ucrt-x86_64-gcc git mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja"
     Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke"  @WriteLogInlineDefaults
     Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
 
