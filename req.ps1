@@ -829,9 +829,6 @@ Write-LogInline -Level Information -Template 'Verifying Python installation stat
 if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-Command python -ErrorAction SilentlyContinue)) {
     Write-LogInline -Level Warning -Template 'Python not detected. Cloning pyenv-win into %USERPROFILE%\.pyenv...' @WriteLogInlineDefaults
 
-    # Virtual environment creation
-    Write-Host "→ [Before install] PATH = $Env:Path"
-
     # Validate Git clone operation idempotently
     $repoPath = "$env:USERPROFILE\.pyenv"
     if (Test-Path $repoPath) {
