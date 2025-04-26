@@ -68,7 +68,7 @@ function Write-LogInline {
         [ValidateSet('Verbose','Debug','Information','Warning','Error','Critical')][string]$Level,
         [ValidateSet('Verbose','Debug','Information','Warning','Error','Critical')][string]$MinLevel       = 'Information',
         [ValidateSet('Verbose','Debug','Information','Warning','Error','Critical')][string]$FileMinLevel  = 'Verbose',
-        [string]$Template,
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()] [string]$Template,
         [object]$Params,
         [switch]$UseBackColor,
         [switch]$Overwrite,
@@ -76,6 +76,18 @@ function Write-LogInline {
         [string]$FileAppName,
         [switch]$ReturnJson
     )
+
+    # Normalize any non-hashtable, non-array to a one‐item array
+    if ($Params -isnot [hashtable] -and $Params -isnot [object[]]) {
+        $Params = @($Params)
+    }
+
+    # Now enforce flatness on arrays
+    if ($Params -is [object[]] -and ($Params |
+    Where-Object { $_ -is [System.Collections.IEnumerable] -and -not ($_ -is [string]) }
+    )) {
+        throw "Parameter -Params array must be flat (no nested collections)."
+    }
 
     # ANSI escape
     $esc = [char]27
@@ -109,23 +121,30 @@ function Write-LogInline {
     }
 
     # Timestamp and render
-    $Params = @($Params)
     $timeEntry = Get-Date
     $timeStr   = $timeEntry.ToString('yyyy-MM-dd HH:mm:ss:ff')
     $plMatches = [regex]::Matches($Template, '{(?<name>\w+)}')
     $keys      = $plMatches | ForEach-Object { $_.Groups['name'].Value } | Select-Object -Unique
+    $wasHash    = $Params -is [hashtable]
+    $paramArray = @($Params)
+
+    if (-not $wasHash -and $paramArray.Count -lt $keys.Count) {
+        throw "Insufficient parameters: expected $($keys.Count), received $($paramArray.Count)"
+    }
+
     $keys = @($keys)
-    if ($Params -is [hashtable]) {
-        $map = @($Params)
+    if ($wasHash) {
+        $map = $Params
     } else {
         $map = @{}
-        for ($i = 0; $i -lt $keys.Count; $i++) { $map[$keys[$i]] = $Params[$i] }
+        for ($i = 0; $i -lt $keys.Count; $i++) { $map[$keys[$i]] = $paramArray[$i] }  # CHANGED: use paramArray
     }
 
     # Fix: cast null to empty string, avoid boolean -or misuse
     $msg = $Template
     foreach ($k in $keys) {
-        $msg = $msg -replace "\{$k\}", [string]$map[$k]
+        $escName = [regex]::Escape($k)
+        $msg = $msg -replace "\{$escName\}", [string]$map[$k]
     }
     $rawLine = "[$timeStr $($abbrMap[$Level])][$caller] $msg"
 
@@ -244,36 +263,6 @@ function Write-LogInline {
 
 <#
 .SYNOPSIS
-    Writes a timestamped message in the host console with optional color.
-.DESCRIPTION
-    The Write-Info function formats and writes a message prefixed by the current time (HH:mm:ss).
-    It supports custom foreground color and can be used for status updates or logging in scripts.
-.PARAMETER Message
-    The text to display in the console.
-.PARAMETER Color
-    The ConsoleColor to apply to the message. Defaults to Cyan.
-.EXAMPLE
-    Write-Info -Message 'Initialization complete.' -Color Green
-#>
-function Write-Info {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true, Position = 0)]
-        [string]$Message,
-
-        [Parameter(Position = 1)]
-        [ConsoleColor]$Color = [ConsoleColor]::Cyan
-    )
-
-    # Format current time as hours:minutes:seconds
-    $timestamp = (Get-Date).ToString('HH:mm:ss')
-
-    # Output the timestamped message
-    Write-Host "$timestamp  $Message" -ForegroundColor $Color
-}
-
-<#
-.SYNOPSIS
 Converts a Windows file path to a MSYS2-compatible Bash path.
 
 .DESCRIPTION
@@ -313,32 +302,83 @@ function Convert-ToMsysPath {
 
 <#
 .SYNOPSIS
-    Ensures each directory path is prepended to the user and session PATH environment variable if not already present.
+    Ensures each specified directory is present in both the User and Process PATH scopes, resolving and normalizing paths.
 .DESCRIPTION
-    Adds one or more fully qualified directory paths to the user and current session PATH if not already present.
-    This function is general-purpose and does not assume any subfolder structure.
+    For each given PATH scope ('User' and 'Process'), adds any missing fully qualified directory paths.
+    - Resolves each path to its absolute form and strips trailing backslashes.
+    - Skips paths that cannot be resolved (emits a warning).
+    - Prevents duplicates via case-insensitive comparison.
+    - Provides verbose output when requested.
 .PARAMETER Paths
-    An array of fully qualified directory paths to ensure are included in the user and session PATH.
+    An array of directory paths to ensure are included in the User and Process PATH variables.
+.OUTPUTS
+    [PSCustomObject] with properties:
+      - Success: [bool] Indicates if the specified paths were ensured (present or added).
+      - Paths: [string[]] The list of specified paths that are now present in PATH.
 .EXAMPLE
-    Add-ToUserPathIfMissing -Paths "C:\Tools\bin", "C:\Dev\shims"
+    # Ensure directories and capture the result
+    $result = Add-ToUserPathIfMissing -Paths "C:\Tools\bin","C:\Dev\shims" -Verbose
+    if ($result.Success) {
+        Write-Host "Ensured paths: $($result.Paths -join ', ')"
+    } else {
+        Write-Host "No valid paths were provided to process."
+    }
 #>
 function Add-ToUserPathIfMissing {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string[]]$Paths
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string[]] $Paths
     )
 
-    $userPath = [Environment]::GetEnvironmentVariable('Path','User')
-    $sessionPath = [Environment]::GetEnvironmentVariable('Path','Process')
-    $missingPaths = $Paths | Where-Object { $userPath -notlike "*$_*" }
+    # Resolve and normalize input paths once
+    $resolvedPaths = $Paths | ForEach-Object {
+        try {
+            (Resolve-Path $_ -ErrorAction Stop).ProviderPath.TrimEnd('\')
+        } catch {
+            Write-Warning "Cannot resolve path: $_"
+            continue
+        }
+    } | Select-Object -Unique
 
-    if ($missingPaths) {
-        $newUserPath = ($missingPaths -join ';') + ';' + $userPath
-        [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
-
-        $newSessionPath = ($missingPaths -join ';') + ';' + $sessionPath
-        [Environment]::SetEnvironmentVariable('Path', $newSessionPath, 'Process')
+    if (-not $resolvedPaths) {
+        Write-Verbose "No valid paths to process."
+        return [PSCustomObject]@{ Success = $false; Paths = @() }
     }
+
+    foreach ($scope in 'User','Process') {
+        try {
+            # Read and normalize existing PATH entries
+            $currentPaths = [Environment]::GetEnvironmentVariable('Path', $scope)
+            $normalizedCurrent = $currentPaths -split ';' | ForEach-Object {
+                try { (Resolve-Path $_ -ErrorAction Stop).ProviderPath.TrimEnd('\') } catch { }
+            } | Where-Object { $_ } | Select-Object -Unique
+        } catch {
+            Write-Error "Failed to read $scope PATH: $_"
+            continue
+        }
+
+        # Determine which paths are missing
+        $missing = $resolvedPaths | Where-Object { $_ -notin $normalizedCurrent }
+        if (-not $missing) {
+            Write-Verbose "[$scope] No new paths to add."
+            continue
+        }
+        $missing = @($missing)
+
+        # Prepend missing entries and update environment variable
+        $newValue = ($missing + ($currentPaths -split ';')) -join ';'
+        try {
+            [Environment]::SetEnvironmentVariable('Path', $newValue, $scope)
+            Write-Output "[$scope] Added paths: $($missing -join ', ')"
+        } catch {
+            Write-Error "Failed to update $scope PATH: $_"
+        }
+    }
+
+    # Return ensuring result: all requested paths are now present
+    return [PSCustomObject]@{ Success = $true; Paths = $resolvedPaths }
 }
 
 <#
@@ -379,7 +419,182 @@ function Add-ToUserEnvarIfMissing {
     }
 }
 
-Clear-Host
+<#
+.SYNOPSIS
+    Sets and normalizes the USER Path environment variable for User scope only, with support for environment variable expansion.
+
+.DESCRIPTION
+    Splits the User PATH into tokens; removes blank entries; expands any embedded environment variables;
+    trims trailing '\\' characters; resolves each token to its real-cased, full path (or falls back to GetFullPath);
+    removes duplicate entries; optionally sorts them; and writes the cleaned list back to the User environment scope.
+
+.PARAMETER Scope
+    The environment scope to update: 'User', 'Process', or 'Both' (default).
+
+.PARAMETER Sort
+    If specified, sorts the final entries alphabetically.
+
+.PARAMETER RemoveNonexistent
+    If specified, any PATH token that does not resolve to an existing file system entry
+    will be omitted from the final list.
+
+.PARAMETER RemoveEmptyDirs
+    If specified, any PATH token that resolves to an existing directory but contains no files or subdirectories
+    will be omitted from the final list.
+
+.PARAMETER NoReturn
+    If specified, the function will not output the cleaned PATH list; it will run silently.
+
+.OUTPUTS
+    System.String[]
+    The list of path entries written back to the specified scope(s), unless -NoReturn is used.
+
+.EXAMPLE
+    # Normalize only your User PATH, preserving the original order
+    Update-UserEnvironmentPath -Scope User
+
+.EXAMPLE
+    # Normalize, remove dead and empty directories
+    Update-UserEnvironmentPath -Sort -RemoveEmptyDirs -RemoveNonexistent -NoReturn -Verbose
+
+.EXAMPLE
+    # Normalize without returning the list
+    Update-UserEnvironmentPath -Scope User -NoReturn
+#>
+function Update-UserEnvironmentPath {
+
+    [CmdletBinding()]
+    param(
+        [ValidateSet('User','Process','Both')]
+        [string]$Scope = 'Both',
+
+        [switch]$Sort,
+
+        [switch]$RemoveNonexistent,
+
+        [switch]$RemoveEmptyDirs,
+
+        [switch]$NoReturn
+    )
+
+    # Determine target scopes based on parameter
+    $targets = if ($Scope -eq 'Both') { 'User','Process' } else { $Scope }
+
+    # Store original and computed lists
+    $originalPaths = @{}
+    $computedLists  = @{}
+
+    try {
+        foreach ($t in $targets) {
+            $raw = [Environment]::GetEnvironmentVariable('Path', $t)
+            $originalPaths[$t] = $raw
+
+            if (-not $raw) {
+                Write-Verbose "[$t] Original PATH is empty; nothing to normalize."
+                $computedLists[$t] = @()
+                continue
+            }
+
+            Write-Verbose "[$t] Loaded $($raw -split ';').Count raw tokens."
+
+            # Split into tokens, count blanks removed
+            $allTokens       = $raw -split ';'
+            $tokens          = $allTokens | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
+            $blankRemoved    = $allTokens.Count - $tokens.Count
+
+            # Initialize stats
+            $purgedCount         = 0
+            $emptyDirCount       = 0
+            $slashTrimCount      = 0
+            $casingChangeCount   = 0
+
+            # Expand any embedded environment variables and normalize each entry
+            $normalized = foreach ($entry in $tokens) {
+                $expanded = [Environment]::ExpandEnvironmentVariables($entry)
+                $trimmed  = $expanded.TrimEnd('\')
+                if ($expanded -ne $trimmed) { $slashTrimCount++ }
+
+                # Remove non-existent
+                if ($RemoveNonexistent -and -not (Test-Path -LiteralPath $trimmed -PathType Any)) {
+                    Write-Verbose "Skipping non-existent entry: $trimmed"
+                    $purgedCount++
+                    continue
+                }
+
+                # Remove empty dirs
+                if ($RemoveEmptyDirs -and (Test-Path -LiteralPath $trimmed -PathType Container)) {
+                    $items = Get-ChildItem -LiteralPath $trimmed -Force -ErrorAction SilentlyContinue
+                    if (-not $items) {
+                        Write-Verbose "Skipping empty directory: $trimmed"
+                        $emptyDirCount++
+                        continue
+                    }
+                }
+
+                # Resolve path casing or fallback
+                if (Test-Path -LiteralPath $trimmed -ErrorAction SilentlyContinue) {
+                    $resolved = (Get-Item -LiteralPath $trimmed).FullName.TrimEnd('\')
+                    if ($resolved -ne $trimmed) { $casingChangeCount++ }
+                } else {
+                    $resolved = [IO.Path]::GetFullPath($trimmed).TrimEnd('\')
+                }
+                $resolved
+            }
+
+            # Summary of actions
+            Write-Verbose "[$t] Removed $blankRemoved empty entries, purged $purgedCount missing entries, removed $emptyDirCount empty dirs, trimmed $slashTrimCount trailing backslashes, corrected casing on $casingChangeCount entries."
+
+            # Remove duplicates and optionally sort
+            $unique = $normalized | Select-Object -Unique
+            if ($Sort) { $unique = $unique | Sort-Object -Descending}
+
+            Write-Verbose "[$t] Computed $($unique.Count) cleaned entries."
+            $computedLists[$t] = $unique
+        }
+    } catch {
+        Write-Warning "Error during normalization: $_. No changes applied."
+        return
+    }
+
+    # Backup and apply changes
+    try {
+        foreach ($t in $targets) {
+            [Environment]::SetEnvironmentVariable('Backup_PATH', $originalPaths[$t], $t)
+            Write-Verbose "[$t] Backup saved to 'Backup_PATH'."
+        }
+
+        foreach ($t in $targets) {
+            [Environment]::SetEnvironmentVariable('Path', ($computedLists[$t] -join ';'), $t)
+            Write-Verbose "[$t] Applied cleaned PATH with $($computedLists[$t].Count) entries."
+        }
+
+        Write-Verbose "All scopes updated successfully."
+    } catch {
+        Write-Warning "Error during commit: $_. Attempting rollback."
+        foreach ($t in $targets) {
+            try {
+                [Environment]::SetEnvironmentVariable('Path', $originalPaths[$t], $t)
+                Write-Verbose "[$t] Rolled back to original PATH."
+            } catch {
+                Write-Error "[$t] Rollback failed: $_"
+            }
+        }
+    }
+
+    if (-not $NoReturn) {
+        return $computedLists
+    }
+}
+
+
+
+
+
+
+Update-UserEnvironmentPath -Sort -RemoveNonexistent -RemoveEmptyDirs -NoReturn  -Verbose
+#Write-LogInline2 -Level Information -Template "Script execution has started.{foo} {baZ}" -Params "bar", 42  @WriteLogInlineDefaults
+
+#Clear-Host
 
 $WriteLogInlineDefaults = @{
     FileMinLevel  = 'Error'
@@ -419,14 +634,11 @@ $originalProgressPreference = $ProgressPreference
 $ProgressPreference = 'SilentlyContinue'
 Write-LogInline -Level Information -Template 'ProgressPreference temporarily set to {ProgressPreference}' -Params 'SilentlyContinue' @WriteLogInlineDefaults
 
-
 try {
     Write-LogInline -Level Information -Template 'Checking installed NuGet Package Provider version...' @WriteLogInlineDefaults
 
     # Attempt to get the installed provider
-    $provider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue |
-                Sort-Object Version -Descending |
-                Select-Object -First 1
+    $provider = Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
 
     $minVersion = [Version]'2.8.5.201'
     if (-not $provider -or [Version]$provider.Version -lt $minVersion) {
@@ -494,8 +706,6 @@ catch {
     exit 1
 }
 
-
-
 try {
     Write-LogInline -Level Information -Template 'Installing {0} module...' -Params "BlackBytesBox.Manifested.Initialize" @WriteLogInlineDefaults
     Install-Module -Name BlackBytesBox.Manifested.Initialize -Scope CurrentUser -AllowClobber -Force -Repository PSGallery
@@ -523,8 +733,8 @@ Write-LogInline -Level Information -Template 'ProgressPreference restored to {Pr
 
 # Define your cleanup block as before
 $cleanupScript = {
-    Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Initialize'
-    Remove-OldModuleVersions -ModuleName 'BlackBytesBox.Manifested.Git'
+    Remove-OldModuleVersions -Name 'BlackBytesBox.Manifested.Initialize'
+    Remove-OldModuleVersions -Name 'BlackBytesBox.Manifested.Git'
 }
 
 # Prepare PowerShell process start info for in-memory output capture
@@ -580,27 +790,15 @@ if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
     # Determine the MinGit root folder (subfolder named like "MinGit-2.49.0-64-bit")
     $minGitRoot = ($result | Select-Object -ExpandProperty Path | Select-Object -First 1)
 
-    # Prefer mingw64\bin, else fall back to cmd
-    $gitBin = Join-Path $minGitRoot 'mingw64\bin'
-    if (-not (Test-Path $gitBin)) {
-        $gitBin = Join-Path $minGitRoot 'cmd'
+    $minGitBin = Join-Path $minGitRoot 'mingw64\bin'
+    
+    $retval = Add-ToUserPathIfMissing -Paths $minGitBin
+    foreach ($added in $retval.Paths)
+    {
+        Write-LogInline -Level Information -Template 'Added {added} to user PATH.' -Params $added @WriteLogInlineDefaults
     }
 
-    # Add to current session PATH if not already present
-    if ($env:Path -notlike "*$gitBin*") {
-        $env:Path = "$gitBin;$env:Path"
-        Write-Info "$(Get-Date -Format 'HH:mm:ss')  Added $gitBin to current session PATH." -Color Green
-    }
-
-    # Persist to user profile PATH
-    $currentUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    if ($currentUserPath -notlike "*$gitBin*") {
-        $newUserPath = "$gitBin;$currentUserPath"
-        [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
-        Write-Info "$(Get-Date -Format 'HH:mm:ss')  Persisted $gitBin to user PATH." -Color Green
-    }
-
-    Write-Info "$(Get-Date -Format 'HH:mm:ss')  MinGit has been downloaded and configured." -Color Green
+    Write-LogInline -Level Information -Template 'MinGit has been downloaded and configured.' @WriteLogInlineDefaults
 }
 else {
     $gitPath = (Get-Command git.exe).Source
@@ -631,6 +829,9 @@ Write-LogInline -Level Information -Template 'Verifying Python installation stat
 if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-Command python -ErrorAction SilentlyContinue)) {
     Write-LogInline -Level Warning -Template 'Python not detected. Cloning pyenv-win into %USERPROFILE%\.pyenv...' @WriteLogInlineDefaults
 
+    # Virtual environment creation
+    Write-Host "→ [Before install] PATH = $Env:Path"
+
     # Validate Git clone operation idempotently
     $repoPath = "$env:USERPROFILE\.pyenv"
     if (Test-Path $repoPath) {
@@ -645,15 +846,16 @@ if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-C
     }
 
     # --- BEGIN pyenv-win initialization ---
-
-    # Define the root path
     $pyenvRoot = Join-Path $env:USERPROFILE '.pyenv\pyenv-win'
+<#
+    # Define the root path
+    
 
     # 1) Update current session env vars
     $env:PYENV       = $pyenvRoot
     $env:PYENV_HOME  = $pyenvRoot
     $env:PYENV_ROOT  = $pyenvRoot
-    $env:Path        = "$pyenvRoot\bin;$pyenvRoot\shims;$env:Path"
+    #$env:Path        = "$pyenvRoot\bin;$env:Path"
     Write-LogInline -Level Information -Template 'Session variables set: PYENV, PYENV_HOME, PYENV_ROOT, and PATH updated.' @WriteLogInlineDefaults
 
     # 2) Persist to user environment
@@ -661,16 +863,24 @@ if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-C
     [Environment]::SetEnvironmentVariable('PYENV_HOME', $pyenvRoot, 'User')
     [Environment]::SetEnvironmentVariable('PYENV_ROOT', $pyenvRoot, 'User')
 
+
     # Prepend to the persisted user PATH
     $userPath = [Environment]::GetEnvironmentVariable('Path','User')
     if ($userPath -notlike "*$pyenvRoot*") {
-        $newUserPath = "$pyenvRoot\bin;$pyenvRoot\shims;$userPath"
+        $newUserPath = "$pyenvRoot\bin;$userPath"
         [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
         Write-LogInline -Level Information -Template 'Persisted pyenv-win paths to user PATH.' @WriteLogInlineDefaults
     }
-
+#>
+    Add-ToUserEnvarIfMissing -Name 'PYENV' -Value $pyenvRoot -Overwrite
+    Add-ToUserEnvarIfMissing -Name 'PYENV_HOME' -Value $pyenvRoot -Overwrite
+    Add-ToUserEnvarIfMissing -Name 'PYENV_ROOT' -Value $pyenvRoot -Overwrite
+    Add-ToUserPathIfMissing -Paths "$pyenvRoot\bin", "$pyenvRoot\shims", "$pyenvRoot"
     # 3) Initialize and install Python versions
     Write-LogInline -Level Information -Template 'Rehashing pyenv and installing Python 3.11.1…' @WriteLogInlineDefaults
+
+    Write-Host "→ [Before install] PATH = $Env:Path"
+
     & pyenv rehash
     & pyenv install 3.11.9
     & pyenv global  3.11.9
@@ -748,7 +958,7 @@ if (-not (Test-Path -Path $programFolderLlamaCpp -PathType Container)) {
     Write-LogInline -Level Information -Template "First msys call initalize scripts have to run..."  @WriteLogInlineDefaults
     $bashCmdBaseInvoke = "echo 'First msys call initalize scripts have to run...'"
     Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke"  @WriteLogInlineDefaults
-    Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'"
+    Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke'" | Out-Null
    
     Write-LogInline -Level Information -Template "Installing dependencies via pacman..."  @WriteLogInlineDefaults
     $bashCmdBaseInvoke = "pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-gcc git mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja"
@@ -831,7 +1041,7 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
         Invoke-Expression "& $venvExecutable $pythonModuleSwitch $ModuleArgs"
     }
 
-    # Virtual environment creation
+
     
     Write-LogInline -Level Information -Template 'Checking for virtual environment at {virtualEnvPath}...' -Params $virtualEnvPath @WriteLogInlineDefaults
     if (-not (Test-Path -Path $virtualEnvPath -PathType Container)) {
