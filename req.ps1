@@ -847,43 +847,19 @@ if (-not (Get-Command python.exe -ErrorAction SilentlyContinue) -and -not (Get-C
 
     # --- BEGIN pyenv-win initialization ---
     $pyenvRoot = Join-Path $env:USERPROFILE '.pyenv\pyenv-win'
-<#
-    # Define the root path
-    
 
-    # 1) Update current session env vars
-    $env:PYENV       = $pyenvRoot
-    $env:PYENV_HOME  = $pyenvRoot
-    $env:PYENV_ROOT  = $pyenvRoot
-    #$env:Path        = "$pyenvRoot\bin;$env:Path"
-    Write-LogInline -Level Information -Template 'Session variables set: PYENV, PYENV_HOME, PYENV_ROOT, and PATH updated.' @WriteLogInlineDefaults
-
-    # 2) Persist to user environment
-    [Environment]::SetEnvironmentVariable('PYENV',      $pyenvRoot, 'User')
-    [Environment]::SetEnvironmentVariable('PYENV_HOME', $pyenvRoot, 'User')
-    [Environment]::SetEnvironmentVariable('PYENV_ROOT', $pyenvRoot, 'User')
-
-
-    # Prepend to the persisted user PATH
-    $userPath = [Environment]::GetEnvironmentVariable('Path','User')
-    if ($userPath -notlike "*$pyenvRoot*") {
-        $newUserPath = "$pyenvRoot\bin;$userPath"
-        [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
-        Write-LogInline -Level Information -Template 'Persisted pyenv-win paths to user PATH.' @WriteLogInlineDefaults
-    }
-#>
     Add-ToUserEnvarIfMissing -Name 'PYENV' -Value $pyenvRoot -Overwrite
     Add-ToUserEnvarIfMissing -Name 'PYENV_HOME' -Value $pyenvRoot -Overwrite
     Add-ToUserEnvarIfMissing -Name 'PYENV_ROOT' -Value $pyenvRoot -Overwrite
-    Add-ToUserPathIfMissing -Paths "$pyenvRoot\bin", "$pyenvRoot\shims", "$pyenvRoot"
+    Add-ToUserPathIfMissing -Paths "$pyenvRoot\bin", "$pyenvRoot"
     # 3) Initialize and install Python versions
     Write-LogInline -Level Information -Template 'Rehashing pyenv and installing Python 3.11.1…' @WriteLogInlineDefaults
-
-    Write-Host "→ [Before install] PATH = $Env:Path"
 
     & pyenv rehash
     & pyenv install 3.11.9
     & pyenv global  3.11.9
+
+    Add-ToUserPathIfMissing -Paths "$pyenvRoot\shims"
 
     Write-LogInline -Level Information -Template 'pyenv initialization complete. Installed versions:' @WriteLogInlineDefaults
     & pyenv versions
