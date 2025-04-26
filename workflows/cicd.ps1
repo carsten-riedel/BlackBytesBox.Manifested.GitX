@@ -99,8 +99,29 @@ if (Test-Path "$PSScriptRoot/cicd_secrets.ps1") {
     Write-Host "Secrets will be taken from args."
 }
 
-$currentBranch = Get-GitCurrentBranch
 
+$result1 = Convert-DateTimeTo64SecPowershellVersion -VersionBuild 0
+$result2 = Get-GitCurrentBranch
+$result4 = Get-GitCurrentBranchRoot
+$result3 = Get-GitTopLevelDirectory
+
+
+##############################
+
+# Define the path to your module folder (adjust "MyModule" as needed)
+$moduleFolder = "$result3/source/BlackBytesBox.Manifested.Git"
+Update-ManifestModuleVersion -ManifestPath "$moduleFolder" -NewVersion "$($result1.VersionBuild).$($result1.VersionMajor).$($result1.VersionMinor)"
+$moduleManifest = "$moduleFolder/BlackBytesBox.Manifested.Git.psd1" -replace '[/\\]', [System.IO.Path]::DirectorySeparatorChar
+
+# Validate the module manifest
+Write-Host "===> Testing module manifest at: $moduleManifest" -ForegroundColor Cyan
+Test-ModuleManifest -Path $moduleManifest
+
+Publish-Module -Path $moduleFolder -Repository "PSGallery" -NuGetApiKey "$POWERSHELL_GALLERY"
+
+exit 0
+
+$currentBranch = Get-GitCurrentBranch
 $currentBranchRoot = Get-BranchRoot -BranchName "$currentBranch"
 $topLevelDirectory = Get-GitTopLevelDirectory
 
