@@ -941,7 +941,7 @@ if (-not (Test-Path -Path $programFolderLlamaCpp -PathType Container)) {
     Write-LogInline -Level Information -Template "First msys call initalize scripts have to run..."  @WriteLogInlineDefaults
     $bashCmdBaseInvoke = "echo 'First msys call initalize scripts have to run...'"
     Write-LogInline -Level Information -Template "Executing: $bashCmdBaseInvoke"  @WriteLogInlineDefaults
-    Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke' *> $null"
+    Invoke-Expression "$fullShellCommand '$bashCmdBaseInvoke' | Out-Null"
    
     Write-LogInline -Level Information -Template "Installing dependencies via pacman..."  @WriteLogInlineDefaults
     $bashCmdBaseInvoke = "pacman -S --needed --noconfirm --noprogressbar mingw-w64-ucrt-x86_64-gcc git mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja"
@@ -1065,6 +1065,30 @@ Write-LogInline -Level Information -Template "    & '$activateScript'" @WriteLog
 Write-LogInline -Level Information -Template "https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct" @WriteLogInlineDefaults
 Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
 
+Write-LogInline -Level Information -Template "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct" @WriteLogInlineDefaults
+Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
+
+Write-LogInline -Level Information -Template "https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct" @WriteLogInlineDefaults
+Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
+
+Write-LogInline -Level Information -Template "https://huggingface.co/Qwen/Qwen3-0.6B" @WriteLogInlineDefaults
+Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/Qwen/Qwen3-0.6B' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
+
+Write-LogInline -Level Information -Template "https://huggingface.co/Qwen/Qwen3-1.7B" @WriteLogInlineDefaults
+Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/Qwen/Qwen3-1.7B' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
+
+Write-LogInline -Level Information -Template "https://huggingface.co/Qwen/Qwen3-4B" @WriteLogInlineDefaults
+Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/Qwen/Qwen3-4B' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
+
+Write-LogInline -Level Information -Template "https://huggingface.co/Qwen/Qwen3-8B" @WriteLogInlineDefaults
+Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/Qwen/Qwen3-8B' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
+
+Write-LogInline -Level Information -Template "https://huggingface.co/Qwen/Qwen3-14B" @WriteLogInlineDefaults
+Mirror-GitRepoWithDownloadContent -RepoUrl 'https://huggingface.co/Qwen/Qwen3-14B' -BranchName 'main' -DownloadEndpoint 'resolve' -DestinationRoot 'C:\HuggingfaceModels' -Filter 'onnx/*','runs/*'
+
+
+
+
 Write-LogInline -Level Information -Template 'Verifying Python installation status...' @WriteLogInlineDefaults
 
 $pythoncmd = Get-Command python -ErrorAction SilentlyContinue
@@ -1104,6 +1128,7 @@ if ($pythoncmd -and $convertcmd) {
             $gguflatest = Join-Path $programFolderMsys2 "home\$($env:Username)\llama.cpp\gguf-py"
             Invoke-VenvCommand "$pythonModuleSwitch pip install -e ""$gguflatest"""
             Invoke-VenvCommand "$convertHfToGgufPath C:\HuggingfaceModels\HuggingFaceTB\SmolLM2-135M-Instruct --outfile C:\HuggingfaceModels\ConvertedSafeTensors\SmolLM2-135M-Instruct.gguf"
+            Invoke-VenvCommand "$convertHfToGgufPath C:\HuggingfaceModels\agentica-org\DeepCoder-14B-Preview --outfile C:\HuggingfaceModels\ConvertedSafeTensors\DeepCoder-14B-Preview.gguf"
         } else {
             Write-LogInline -Level Error -Template "" -Params $virtualEnvPath @WriteLogInlineDefaults
         }
