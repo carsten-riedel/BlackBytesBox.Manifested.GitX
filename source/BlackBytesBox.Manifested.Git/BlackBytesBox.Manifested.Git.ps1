@@ -66,7 +66,7 @@ function Get-GitCurrentBranch {
       branch found is returned.
     #>
     [CmdletBinding()]
-    [alias("ggtd")]
+    [alias("ggcb")]
     param()
     
     try {
@@ -191,7 +191,7 @@ function Get-GitRepositoryName {
         $remoteUrl = git config --get remote.origin.url 2>$null
 
         if (-not $remoteUrl) {
-            Write-Error "Keine Remote-URL gefunden. Stelle sicher, dass das Repository eine Remote-URL besitzt."
+            Write-Error "No remote URL found. Ensure the repository has a remote URL.."
             return $null
         }
 
