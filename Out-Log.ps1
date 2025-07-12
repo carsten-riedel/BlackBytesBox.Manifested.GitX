@@ -356,7 +356,7 @@ function Out-Log {
         }
 
         # 2) If last failure was more than 5 minutes ago, try POST + replay queue
-        if ($script:failedAt -le (Get-Date).ToUniversalTime().AddSeconds(-20)) {
+        if ($script:failedAt -le (Get-Date).ToUniversalTime().AddSeconds(-60)) {
             try {
                 # Attempt the primary POST
                 Invoke-RestMethod `
@@ -455,9 +455,7 @@ function test() {
     Out-Log @Logconfig -Level Warning -Template "{Name} {Value} called." -Params @{ Name = 'TestFunction'; Value = 42 }
     Out-Log @Logconfig -Level Error -Template "{Name} {Value} called." -Params @{ Name = 'TestFunction'; Value = 42 }
     Out-Log @Logconfig -Level Critical -Template "{Name} {Value} called." -Params @{ Name = 'TestFunction'; Value = 42 }
-}   
-
-Out-Log @WriteLogInlineDefaultsProgressBar -Level Information -Template "Script execution has started."  -InitialWrite $true
+    Out-Log @WriteLogInlineDefaultsProgressBar -Level Information -Template "Script execution has started."  -InitialWrite $true
 Start-Sleep -Milliseconds 500
 Out-Log @WriteLogInlineDefaultsProgressBar -Level Information -Template "Script execution has started.."
 Start-Sleep -Milliseconds 500
@@ -473,5 +471,8 @@ $currentPolicy = Get-ExecutionPolicy -Scope CurrentUser
 Out-Log @Logconfig -Level Critical -Template "CurrentUser policy is '{currentPolicy}'." -Params $currentPolicy 
 
 $x=1
+}   
+
+
 
 
