@@ -32,7 +32,7 @@
 
 .PARAMETER FileAppName
     When set, enables file logging under:
-      %LOCALAPPDATA%\Write-LogInline\<FileAppName>\<yyyy-MM-dd>_<PID>.log
+      %LOCALAPPDATA%\Write-LogInline\<FileAppName>\<yyyy-MM-dd>_PID<PID>.log
 
 .PARAMETER ReturnJson
     Switch to return the log details as a JSON-formatted string; otherwise, no output.
@@ -117,7 +117,7 @@ function Write-LogInline {
 
         if (-not (Test-Path $root)) { New-Item -Path $root -ItemType Directory | Out-Null }
         $date    = Get-Date -Format 'yyyy-MM-dd'
-        $logPath = Join-Path $root "${date}_${PID}.log"
+        $logPath = Join-Path $root "${date}_PID${PID}.log"
     }
 
     # Timestamp and render
@@ -258,6 +258,358 @@ function Write-LogInline {
     # Return JSON only if requested
     if ($ReturnJson) {
         return $output | ConvertTo-Json -Depth 5
+    }
+}
+
+<#
+.SYNOPSIS
+    Writes a timestamped, color‑coded inline log entry to the console, optionally appends to a daily log file, and optionally returns log details as JSON.
+
+.DESCRIPTION
+    Formats messages with a high-precision timestamp, log-level abbreviation, and caller identifier. Color-codes console output by severity, can overwrite the previous line, and can append to a per-process daily log file.
+    Use -ReturnJson to emit a JSON representation of the log details instead of returning nothing.
+
+.PARAMETER Level
+    The log level. Valid values: Verbose, Debug, Information, Warning, Error, Critical.
+
+.PARAMETER MinLevel
+    Minimum level to write to the console. Messages below this level are suppressed. Default: Information.
+
+.PARAMETER FileMinLevel
+    Minimum level to append to the log file. Messages below this level are skipped. Default: Verbose.
+
+.PARAMETER Template
+    The message template, using placeholders like {Name}.
+
+.PARAMETER Params
+    Values for each placeholder in Template. Either a hashtable or an ordered object array.
+
+.PARAMETER UseBackColor
+    Switch to enable background coloring in the console.
+
+.PARAMETER Overwrite
+     Switch to overwrite the previous console entry rather than writing a new line.
+
+.PARAMETER InitialWrite
+    Switch to output an initial blank line instead of attempting to overwrite on the first call when using -Overwrite.
+
+.PARAMETER FileAppName
+    When set, enables file logging under:
+      %LOCALAPPDATA%\Write-LogInline\<FileAppName>\<yyyy-MM-dd>_PID<PID>.log
+
+.PARAMETER ReturnJson
+    Switch to return the log details as a JSON-formatted string; otherwise, no output.
+
+.EXAMPLE
+    # Write a green "Hello, World!" message to the console
+    Write-LogInline -Level Information `
+                   -Template "{greeting}, {user}!" `
+                   -Params @{ greeting = "Hello"; user = "World" }
+
+.EXAMPLE
+    # Using defaults plus -ReturnJson
+    $WriteLogInlineDefaults = @{
+        FileMinLevel  = 'Verbose'
+        MinLevel      = 'Information'
+        UseBackColor  = $false
+        Overwrite     = $true
+        FileAppName   = 'testing'
+        ReturnJson    = $false
+    }
+
+    Write-LogInline -Level Verbose `
+                   -Template "{hello}-{world} number {num} at {time}!" `
+                   -Params "Hello","World",1,1.2 `
+                   @WriteLogInlineDefaults
+
+.NOTES
+    Requires PowerShell 5.0 or later.
+#>
+function Write-LogInline2 {
+    [CmdletBinding()]
+    param(
+        [ValidateSet('Verbose','Debug','Information','Warning','Error','Critical')][string]$Level,
+        [ValidateSet('Verbose','Debug','Information','Warning','Error','Critical')][string]$MinLevel       = 'Information',
+        [ValidateSet('Verbose','Debug','Information','Warning','Error','Critical')][string]$FileMinLevel  = 'Verbose',
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()] [string]$Template,
+        [object]$Params,
+        [switch]$UseBackColor,
+        [switch]$Overwrite,
+        [switch]$InitialWrite,
+        [string]$Endpoint,
+        [string]$ApiKey,
+        [string]$LogSpace,
+        [switch]$ReturnJson
+    )
+
+    # Normalize any non-hashtable, non-array to a one‐item array
+    if ($Params -isnot [hashtable] -and $Params -isnot [object[]]) {
+        $Params = @($Params)
+    }
+
+    # Now enforce flatness on arrays
+    if ($Params -is [object[]] -and ($Params |
+    Where-Object { $_ -is [System.Collections.IEnumerable] -and -not ($_ -is [string]) }
+    )) {
+        throw "Parameter -Params array must be flat (no nested collections)."
+    }
+
+    # ANSI escape
+    $esc = [char]27
+    if (-not $script:WLI_Caller) {
+        $script:WLI_Caller = if ($MyInvocation.PSCommandPath) { Split-Path -Leaf $MyInvocation.PSCommandPath } else { 'Console' }
+    }
+    $caller = $script:WLI_Caller
+
+    # Level maps
+    $levelValues = @{ Verbose=0; Debug=1; Information=2; Warning=3; Error=4; Critical=5 }
+    $abbrMap      = @{ Verbose='VRB'; Debug='DBG'; Information='INF'; Warning='WRN'; Error='ERR'; Critical='CRT' }
+
+    $writeConsole = $levelValues[$Level] -ge $levelValues[$MinLevel]
+    $writeToFile  = $caller -and ($levelValues[$Level] -ge $levelValues[$FileMinLevel])
+    if (-not ($writeConsole -or $writeToFile)) { return }
+
+    # File path init
+    if ($writeToFile) {
+        $os = [int][System.Environment]::OSVersion.Platform
+        switch ($os) {
+            2 { $base = $env:LOCALAPPDATA } # Win32NT
+            4 { $base = Join-Path $env:HOME ".local/share" } # Unix
+            6 { $base = Join-Path $env:HOME ".local/share" } # MacOSX
+            default { throw "Unsupported OS platform: $os" }
+        }
+        $root = Join-Path $base "Write-LogInline/$caller"
+
+        if (-not (Test-Path $root)) { New-Item -Path $root -ItemType Directory | Out-Null }
+        $date    = Get-Date -Format 'yyyy-MM-dd'
+        $logPath = Join-Path $root "${date}_PID${PID}.log"
+    }
+
+    # Timestamp and render
+    $timeEntry = Get-Date
+    $timeStr   = $timeEntry.ToString('yyyy-MM-dd HH:mm:ss:ff')
+    $plMatches = [regex]::Matches($Template, '{(?<name>\w+)}')
+    $keys      = $plMatches | ForEach-Object { $_.Groups['name'].Value } | Select-Object -Unique
+    $wasHash    = $Params -is [hashtable]
+    $paramArray = @($Params)
+
+    if (-not $wasHash -and $paramArray.Count -lt $keys.Count) {
+        throw "Insufficient parameters: expected $($keys.Count), received $($paramArray.Count)"
+    }
+
+    $keys = @($keys)
+    if ($wasHash) {
+        $map = $Params
+    } else {
+        $map = @{}
+        for ($i = 0; $i -lt $keys.Count; $i++) { $map[$keys[$i]] = $paramArray[$i] }  # CHANGED: use paramArray
+    }
+
+    # Fix: cast null to empty string, avoid boolean -or misuse
+    $msg = $Template
+    foreach ($k in $keys) {
+        $escName = [regex]::Escape($k)
+        $msg = $msg -replace "\{$escName\}", [string]$map[$k]
+    }
+    $rawLine = "[$timeStr $($abbrMap[$Level])][$caller] $msg"
+
+    # Write to file
+    if ($writeToFile) { $rawLine | Out-File -FilePath $logPath -Append -Encoding UTF8 }
+
+    # Console output
+    if ($writeConsole) {
+        if ($InitialWrite) {
+            # Initial invocation: write a blank line instead of overwriting
+            Write-Host ""
+        }
+        if ($Overwrite) {
+            for ($i = 0; $i -lt $script:WLI_LastLines; $i++) {
+                Write-Host -NoNewline ($esc + '[1A' + "`r" + $esc + '[K')
+            }
+        }
+        Write-Host -NoNewline ($esc + '[?25l')
+
+        # Color maps
+        $levelMap = @{
+            Verbose     = @{ Abbrev='VRB'; Fore='DarkGray' }
+            Debug       = @{ Abbrev='DBG'; Fore='Cyan'     }
+            Information = @{ Abbrev='INF'; Fore='Green'    }
+            Warning     = @{ Abbrev='WRN'; Fore='Yellow'   }
+            Error       = @{ Abbrev='ERR'; Fore='Red'      }
+            Critical    = @{ Abbrev='CRT'; Fore='White'; Back='DarkRed' }
+        }
+        $typeColorMap = @{
+            'System.String'   = 'Green';   'System.DateTime' = 'Yellow'
+            'System.Int32'    = 'Cyan';    'System.Int64'     = 'Cyan'
+            'System.Double'   = 'Blue';    'System.Decimal'   = 'Blue'
+            'System.Boolean'  = 'Magenta'; 'Default'          = 'White'
+            'System.Version'  = 'Magenta'; 'Microsoft.PackageManagement.Internal.Utility.Versions.FourPartVersion' = 'Magenta'
+            'Microsoft.PowerShell.ExecutionPolicy' = 'Magenta'
+            'System.Management.Automation.ActionPreference' = 'Green'
+        }
+        $staticFore = 'White'; $staticBack = 'Black'
+        function Write-Colored { param($Text,$Fore,$Back) if ($UseBackColor -and $Back) { Write-Host -NoNewline $Text -ForegroundColor $Fore -BackgroundColor $Back } else { Write-Host -NoNewline $Text -ForegroundColor $Fore } }
+
+        # Header
+        $entry = $levelMap[$Level]
+        $tag   = $entry.Abbrev
+        if ($entry.ContainsKey('Back')) {
+            $lvlBack = $entry.Back
+        } elseif ($UseBackColor) {
+            $lvlBack = $staticBack
+        } else {
+            $lvlBack = $null
+        }
+        Write-Colored '[' $staticFore $staticBack; Write-Colored $timeStr $staticFore $staticBack; Write-Colored ' ' $staticFore $staticBack
+        if ($lvlBack) { Write-Host -NoNewline $tag -ForegroundColor $entry.Fore -BackgroundColor $lvlBack } else { Write-Host -NoNewline $tag -ForegroundColor $entry.Fore }
+        Write-Colored '] [' $staticFore $staticBack; Write-Colored $caller $staticFore $staticBack; Write-Colored '] ' $staticFore $staticBack
+
+        # Message parts
+        $pos = 0
+        foreach ($m in $plMatches) {
+            if ($m.Index -gt $pos) {
+                Write-Colored $Template.Substring($pos, $m.Index - $pos) $staticFore $staticBack
+            }
+            $val = $map[$m.Groups['name'].Value]
+            $t   = $val.GetType().FullName
+
+            if ($typeColorMap.ContainsKey($t)) {
+                $f = $typeColorMap[$t]
+            } else {
+                $f = $typeColorMap['Default']
+            }
+
+            if ($UseBackColor) {
+                $b = $staticBack
+            } else {
+                $b = $null
+            }
+
+            Write-Colored $val $f $b
+            $pos = $m.Index + $m.Length
+        }
+
+        if ($pos -lt $Template.Length) {
+            if ($UseBackColor) {
+                $b = $staticBack
+            } else {
+                $b = $null
+            }
+            Write-Colored $Template.Substring($pos) $staticFore $b
+        }
+
+        Write-Host ''
+        Write-Host -NoNewline ($esc + '[?25h')
+
+        try {
+            $width = $Host.UI.RawUI.WindowSize.Width
+        } catch {
+            $width = 80
+        }
+
+        $script:WLI_LastLines = [math]::Ceiling($rawLine.Length / ($width - 1))
+    }
+
+    # Determinate Platform
+    $platform    = if ($PSVersionTable.PSEdition -eq 'Core') {
+                     if ($IsLinux) {'Linux'} elseif ($IsMacOS) {'macOS'} else {'Windows'}
+                  } else {
+                     'Windows'
+                  }
+
+    $edition    = if ($PSVersionTable.PSEdition) { $PSVersionTable.PSEdition } else { 'Desktop' }
+
+    # Determine script path, defaulting to "Console"
+    if (-not [string]::IsNullOrEmpty($MyInvocation.PSCommandPath)) {
+        $scriptPath = $MyInvocation.PSCommandPath
+        $scriptName = Split-Path $scriptPath -Leaf
+    }
+    else {
+        $scriptPath = 'Console'
+        $scriptName = 'Console'
+    }
+
+    # Get the PowerShell call stack
+    $callStack = Get-PSCallStack
+
+    # If there's at least one caller above this function, grab it
+    if ($callStack.Count -gt 1) {
+        $callerFrame = $callStack[1]
+
+        # Name of the function or script that invoked the logger
+        $functionName = if ($callerFrame.FunctionName) {
+            $callerFrame.FunctionName
+        } else {
+            'Script'
+        }
+
+        # File name (leaf) of the script/module, if any
+        $scriptName = if ($callerFrame.ScriptName) {
+            Split-Path $callerFrame.ScriptName -Leaf
+        } else {
+            'Console'
+        }
+    }
+    else {
+        # No caller (entered at console prompt)
+        $functionName = 'Console'
+        $scriptName   = 'Console'
+    }
+
+    # Return JSON
+    $output = [PSCustomObject]@{
+        EventId = [guid]::NewGuid().ToString()
+        DateTime   = $timeEntry.ToString('o')     # "o" = round-trip yyyy-MM-ddTHH:mm:ss.fffffffK
+        UtcTime = (Get-Date).ToUniversalTime().ToString('o')
+        Level      = $Level
+        Template   = $Template
+        Message    = $msg
+        Parameters = $map
+        Platform = $platform
+        PSVersion = $PSVersionTable.PSVersion.ToString()
+        PSEdition = $edition
+        PID        = $PID
+        ProcName = (Get-Process -Id $PID).Name
+        ScriptPath = $scriptPath
+        ScriptName = $scriptName
+        FunctionName = $functionName
+        LineNumber = $MyInvocation.ScriptLineNumber
+        Machine = [Environment]::MachineName
+        Userdomain = [Environment]::UserDomainName
+        User = [Environment]::UserName
+    }
+
+    # — new remote-post logic —
+    if ($Endpoint -and $ApiKey -and $LogSpace) {
+        $jsonBody = $output | ConvertTo-Json -Depth 6
+
+        $headers = @{
+            'X-API-Key'  = $ApiKey
+            'X-Log-Space' = $LogSpace
+        }
+
+        try {
+            Invoke-RestMethod `
+            -Uri       $Endpoint `
+            -Method    Post `
+            -Headers   $headers `
+            -Body      $jsonBody `
+            -ContentType 'application/json' `
+            -TimeoutSec  1
+        }
+        catch {
+            # write to an "outbox" so you can retry later
+            $outboxDir = Join-Path $env:LOCALAPPDATA "Write-LogInline\Outbox\$LogSpace"
+            if (-not (Test-Path $outboxDir)) { New-Item -Path $outboxDir -ItemType Directory | Out-Null }
+            $file = Join-Path $outboxDir ("{0:yyyyMMdd_HHmmss}_{1}.json" -f (Get-Date), $output.EventId)
+            $jsonBody | Out-File -FilePath $file -Encoding UTF8
+        }
+    }
+    # — end remote-post logic —
+
+    # Return JSON only if requested
+    if ($ReturnJson) {
+        return $output | ConvertTo-Json -Depth 6
     }
 }
 
@@ -586,11 +938,6 @@ function Update-UserEnvironmentPath {
     }
 }
 
-
-
-
-
-
 Update-UserEnvironmentPath -Sort -RemoveNonexistent -RemoveEmptyDirs -NoReturn
 #Write-LogInline2 -Level Information -Template "Script execution has started.{foo} {baZ}" -Params "bar", 42  @WriteLogInlineDefaults
 
@@ -602,12 +949,26 @@ $WriteLogInlineDefaults = @{
     UseBackColor  = $false
     Overwrite     = $false
     FileAppName   = 'req.ps1'
-    ReturnJson    = $false
+    ReturnJson    = $true
+}
+
+$WriteLogInlineDefaults2 = @{
+    FileMinLevel  = 'Error'
+    MinLevel      = 'Information'
+    UseBackColor  = $false
+    Overwrite     = $false
+    ReturnJson    = $true
+    Endpoint   = 'https://localhost:8080/api/logs'
+    ApiKey     = 'your_api_key_here'
+    LogSpace     = 'foo'
+
 }
 
 
 # Begin script
 Write-LogInline -Level Information -Template "Script execution has started." @WriteLogInlineDefaults
+
+Write-LogInline2 -Level Error -Template "Script execution has started." @WriteLogInlineDefaults2
 
 try {
     Write-LogInline -Level Information -Template "Checking current execution policy..." @WriteLogInlineDefaults
